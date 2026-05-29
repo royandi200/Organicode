@@ -1,12 +1,10 @@
 import path from "path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
-import { inspectAttr } from 'kimi-plugin-inspect-react'
 
-// https://vite.dev/config/
 export default defineConfig({
-  base: './',
-  plugins: [inspectAttr(), react()],
+  base: '/',
+  plugins: [react()],
   server: {
     port: 3000,
   },
@@ -15,4 +13,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      external: ['mysql2', 'mysql2/promise', 'crypto', 'fs', 'path', 'os', 'net', 'tls', 'stream'],
+    }
+  },
+  optimizeDeps: {
+    exclude: ['mysql2']
+  }
 });
