@@ -3,11 +3,13 @@ import { useState, useEffect } from 'react';
 const BASE = import.meta.env.VITE_API_BASE_URL || '';
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || 'organicode-admin-2026';
 
-function adminHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${ADMIN_TOKEN}`
-  };
+// Usa query param para evitar problemas de CORS con header Authorization
+function adminUrl(path: string) {
+  return `${BASE}${path}?token=${ADMIN_TOKEN}`;
+}
+
+function adminPostHeaders() {
+  return { 'Content-Type': 'application/json' };
 }
 
 export function useLotes() {
@@ -58,7 +60,7 @@ export function useAdminLotes() {
   const [error, setError] = useState<string | null>(null);
   const refetch = () => {
     setLoading(true);
-    fetch(`${BASE}/api/admin/lotes`, { headers: adminHeaders() })
+    fetch(adminUrl('/api/admin/lotes'))
       .then(r => r.json())
       .then(j => { if (j.ok) setData(j.data); else setError(j.error); })
       .catch(e => setError(e.message))
@@ -73,7 +75,7 @@ export function useAdminOfertas() {
   const [loading, setLoading] = useState(true);
   const refetch = () => {
     setLoading(true);
-    fetch(`${BASE}/api/admin/ofertas`, { headers: adminHeaders() })
+    fetch(adminUrl('/api/admin/ofertas'))
       .then(r => r.json())
       .then(j => { if (j.ok) setData(j.data); })
       .catch(() => {})
@@ -117,9 +119,9 @@ export async function postComprador(payload: object) {
 }
 
 export async function patchOferta(id: number, estado: 'aceptada' | 'rechazada', motivo?: string) {
-  const r = await fetch(`${BASE}/api/admin/ofertas/${id}`, {
+  const r = await fetch(adminUrl(`/api/admin/ofertas/${id}`), {
     method: 'POST',
-    headers: adminHeaders(),
+    headers: adminPostHeaders(),
     body: JSON.stringify({ estado, motivo_rechazo: motivo || null })
   });
   return r.json();
