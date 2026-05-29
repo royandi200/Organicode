@@ -23,7 +23,8 @@ function safeStr(val, max = 2000) {
   if (val === null || val === undefined) return null;
   try {
     const s = typeof val === 'string' ? val : JSON.stringify(val);
-    return s.slice(0, max);
+    // Eliminar caracteres fuera de BMP (emojis compuestos) para compatibilidad utf8mb3
+    return s.replace(/[\uD800-\uDFFF]/g, '?').slice(0, max);
   } catch { return '[serialize error]'; }
 }
 
@@ -48,7 +49,6 @@ function extractActionJSON(raw) {
   for (const block of matches) {
     try {
       const parsed = JSON.parse(block);
-      // ✅ Acepta tanto "action" como "acti@n"
       if (parsed['acti@n'] || parsed.action) return parsed;
     } catch { /* sigue */ }
   }
@@ -58,7 +58,6 @@ function extractActionJSON(raw) {
 // Normaliza el payload: unifica acti@n → action internamente
 function normalizePayload(payload) {
   if (!payload) return null;
-  // Si viene acti@n, copiarlo a action para uso interno
   if (payload['acti@n'] && !payload.action) {
     return { ...payload, action: payload['acti@n'] };
   }
@@ -90,7 +89,7 @@ function calcularPrecio(variedad, proceso, sca_score, precio_bolsa_usd = 2.50) {
   const difVariedad = {
     'geisha': 10.00, 'bourbon rosado': 5.00, 'pink bourbon': 5.00,
     'wush wush': 4.50, 'colombia': 0.50, 'castillo': 0.30,
-    'caturra': 0.20, 'típica': 0.20, 'tabi': 1.50,
+    'caturra': 0.20, 'tipica': 0.20, 'tabi': 1.50,
   };
   const varKey = (variedad || '').toLowerCase();
   for (const [k, v] of Object.entries(difVariedad)) {
@@ -98,10 +97,11 @@ function calcularPrecio(variedad, proceso, sca_score, precio_bolsa_usd = 2.50) {
   }
 
   const difProceso = {
-    'natural': 0.80, 'honey': 0.50, 'anaeróbico': 1.20,
-    'anaerobico': 1.20, 'lavado': 0,
+    'natural': 0.80, 'honey': 0.50, 'anaerobico': 1.20,
+    'anaeróbico': 1.20, 'lavado': 0,
   };
-  const procKey = (proceso || '').toLowerCase();
+  const procKey = (proceso || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   for (const [k, v] of Object.entries(difProceso)) {
     if (procKey.includes(k)) { base += v; break; }
   }
@@ -120,7 +120,8 @@ function calcularPrecio(variedad, proceso, sca_score, precio_bolsa_usd = 2.50) {
 async function saveLog({ from_number, action, raw_body, parsed_json, response, status_code, error, duration_ms }) {
   try {
     await query(
-      `INSERT INTO webhook_logs (tipo, from_number, action, raw_body, parsed_json, response, status_code, error, duration_ms)
+      `INSERT INTO webhook_logs
+         (tipo, from_number, action, raw_body, parsed_json, response, status_code, error, duration_ms)
        VALUES ('caficultor', ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         safeStr(from_number, 50) || null,
@@ -134,7 +135,15 @@ async function saveLog({ from_number, action, raw_body, parsed_json, response, s
       ]
     );
   } catch (e) {
-    console.error('[webhook] saveLog error:', e.message);
+    // ⚠️ Log de emergencia — siempre visible en Vercel logs aunque falle la BD
+    console.error('[webhook:saveLog:FAIL]', JSON.stringify({
+      error:       e.message,
+      action:      safeStr(action, 50),
+      from_number: safeStr(from_number, 50),
+      status_code,
+      duration_ms,
+      timestamp:   new Date().toISOString(),
+    }));
   }
 }
 
@@ -150,6 +159,14 @@ export default async (req, res) => {
   const startTime = Date.now();
   const rawBody   = req.body;
 
+  // Log de entrada — siempre visible en Vercel aunque falle todo lo demás
+  console.log('[webhook:IN]', JSON.stringify({
+    keys:      rawBody ? Object.keys(rawBody) : 'no-body',
+    bodyType:  typeof rawBody?.body,
+    infoType:  typeof rawBody?.info,
+    timestamp: new Date().toISOString(),
+  }));
+
   const reply = async (statusCode, responseObj, logExtra = {}) => {
     const duration_ms = Date.now() - startTime;
     await saveLog({ ...logExtra, raw_body: rawBody, response: responseObj, status_code: statusCode, duration_ms });
@@ -159,16 +176,22 @@ export default async (req, res) => {
   try {
     // ── Parsear payload: acepta "action" y "acti@n" ────────────────────
     let raw = null;
-    if (typeof rawBody?.body === 'string')             raw = extractActionJSON(rawBody.body);
-    if (!raw && typeof rawBody?.info === 'string')     raw = extractActionJSON(rawBody.info);
+    if (typeof rawBody?.body === 'string')                raw = extractActionJSON(rawBody.body);
+    if (!raw && typeof rawBody?.info === 'string')        raw = extractActionJSON(rawBody.info);
     if (!raw && (rawBody?.['acti@n'] || rawBody?.action)) raw = rawBody;
-    if (!raw && typeof rawBody === 'string')           raw = extractActionJSON(rawBody);
+    if (!raw && typeof rawBody === 'string')              raw = extractActionJSON(rawBody);
+
+    // Log de parsing — debug
+    console.log('[webhook:PARSE]', JSON.stringify({
+      found: !!raw,
+      action: raw?.['acti@n'] || raw?.action || null,
+    }));
 
     const payload = normalizePayload(raw);
 
     if (!payload) {
       return await reply(400,
-        makeResponse(false, null, null, null, 'No se encontró acción válida en el mensaje'),
+        makeResponse(false, null, null, null, 'No se encontro accion valida en el mensaje'),
         { action: 'PARSE_ERROR', error: 'No JSON action found' }
       );
     }
@@ -206,7 +229,7 @@ export default async (req, res) => {
         );
         return await reply(200,
           makeResponse(true, action,
-            `✅ Datos actualizados, ${nombre}! Tu perfil en Organicode está al día.`,
+            `Datos actualizados, ${nombre}! Tu perfil en Organicode esta al dia.`,
             { caficultor_id: existing[0].id, nombre, municipio }
           ),
           logBase
@@ -224,7 +247,7 @@ export default async (req, res) => {
 
       return await reply(200,
         makeResponse(true, action,
-          `🌿 ¡Bienvenido a Organicode, ${nombre}! Tu finca *${finca || municipio}* ya está registrada.\n\nAhora puedes registrar tus lotes de café.`,
+          `Bienvenido a Organicode, ${nombre}! Tu finca ${finca || municipio} ya esta registrada. Ahora puedes registrar tus lotes de cafe.`,
           { caficultor_id: newId, nombre, municipio }
         ),
         logBase
@@ -251,7 +274,7 @@ export default async (req, res) => {
 
       if (!caficultores.length) {
         return await reply(404,
-          makeResponse(false, action, null, null, '❌ No encontré tu perfil. Primero regístrate.'),
+          makeResponse(false, action, null, null, 'No encontre tu perfil. Primero registrate.'),
           { ...logBase, error: 'Caficultor no encontrado' }
         );
       }
@@ -290,7 +313,7 @@ export default async (req, res) => {
       const sacos = Math.round(Number(cantidad_kg) / 70);
       return await reply(200,
         makeResponse(true, action,
-          `☕ Lote registrado!\n\n*${variedad}* — ${proceso}\n📦 ${cantidad_kg} kg (~${sacos} sacos)\n💰 Precio estimado: *$${precio_calculado} USD/kg*\n\n¿Confirmas la publicación? Responde sí para publicar o no para guardar como borrador.`,
+          `Lote registrado! ${variedad} - ${proceso}. ${cantidad_kg}kg (~${sacos} sacos). Precio estimado: $${precio_calculado} USD/kg. Confirmas la publicacion?`,
           { lote_id: newId, slug, precio_calculado, caficultor_id: caficultor.id }
         ),
         logBase
@@ -319,7 +342,7 @@ export default async (req, res) => {
 
       if (!lotes.length) {
         return await reply(404,
-          makeResponse(false, action, null, null, '❌ Lote no encontrado o no te pertenece.'),
+          makeResponse(false, action, null, null, 'Lote no encontrado o no te pertenece.'),
           { ...logBase, error: 'Lote no encontrado' }
         );
       }
@@ -347,7 +370,7 @@ export default async (req, res) => {
 
       return await reply(200,
         makeResponse(true, action,
-          `🚀 ¡Tu lote de *${lote.variedad}* ya está publicado!\n\n🔗 Comparte este link con compradores:\n${urlPublica}\n\n🔒 Autenticidad: #${hash.slice(0, 12).toUpperCase()}`,
+          `Tu lote de ${lote.variedad} ya esta publicado! Comparte este link con compradores: ${urlPublica} | Autenticidad: #${hash.slice(0, 12).toUpperCase()}`,
           { lote_id: lote.id, slug: lote.slug, url: urlPublica, hash: hash.slice(0, 12) }
         ),
         logBase
@@ -365,7 +388,7 @@ export default async (req, res) => {
 
       if (!caficultores.length) {
         return await reply(404,
-          makeResponse(false, action, null, null, '❌ No encontré tu perfil. Regístrate primero.'),
+          makeResponse(false, action, null, null, 'No encontre tu perfil. Registrate primero.'),
           { ...logBase, error: 'Caficultor no encontrado' }
         );
       }
@@ -381,21 +404,21 @@ export default async (req, res) => {
       if (!lotes.length) {
         return await reply(200,
           makeResponse(true, action,
-            `Hola ${caficultor.nombre}, aún no tienes lotes registrados. ¡Empieza con tu primer lote! ☕`,
+            `Hola ${caficultor.nombre}, aun no tienes lotes registrados. Empieza con tu primer lote!`,
             { caficultor: { nombre: caficultor.nombre }, lotes: [] }
           ),
           logBase
         );
       }
 
-      const estadoEmoji = { borrador: '📝', publicado: '✅', ofertado: '🤝', vendido: '💰', archivado: '📦' };
+      const estadoTag = { borrador: '[borrador]', publicado: '[publicado]', ofertado: '[ofertado]', vendido: '[vendido]', archivado: '[archivado]' };
       const resumen = lotes.map((l, i) =>
-        `${i + 1}. ${estadoEmoji[l.estado] || '•'} *${l.variedad}* — ${l.cantidad_kg}kg\n   $${l.precio_calculado}/kg · ${l.estado}`
-      ).join('\n\n');
+        `${i + 1}. ${estadoTag[l.estado] || ''} ${l.variedad} - ${l.cantidad_kg}kg | $${l.precio_calculado}/kg | ${l.estado}`
+      ).join('\n');
 
       return await reply(200,
         makeResponse(true, action,
-          `☕ *Tus lotes, ${caficultor.nombre}:*\n\n${resumen}`,
+          `Tus lotes, ${caficultor.nombre}:\n\n${resumen}`,
           { caficultor: { nombre: caficultor.nombre }, lotes }
         ),
         logBase
@@ -416,12 +439,12 @@ export default async (req, res) => {
           [lote_id, cleanFrom]
         );
         if (!lotes.length) {
-          return await reply(404, makeResponse(false, action, null, null, '❌ Lote no encontrado.'), { ...logBase, error: 'Lote no encontrado' });
+          return await reply(404, makeResponse(false, action, null, null, 'Lote no encontrado.'), { ...logBase, error: 'Lote no encontrado' });
         }
         const lote = lotes[0];
         return await reply(200,
           makeResponse(true, action,
-            `💰 *Precio estimado:*\n\nVariedad: ${lote.variedad}\nProceso: ${lote.proceso}\nSCA: ${lote.sca_score || 'N/D'} pts\n\n*$${lote.precio_calculado} USD/kg FOB*\n_(${lote.cantidad_kg}kg = $${(lote.precio_calculado * lote.cantidad_kg).toFixed(0)} USD total estimado)_`,
+            `Precio estimado: ${lote.variedad} | ${lote.proceso} | SCA: ${lote.sca_score || 'N/D'} pts | $${lote.precio_calculado} USD/kg FOB | Total: $${(lote.precio_calculado * lote.cantidad_kg).toFixed(0)} USD`,
             { precio_calculado: lote.precio_calculado, variedad: lote.variedad }
           ),
           logBase
@@ -441,7 +464,7 @@ export default async (req, res) => {
       const precio = calcularPrecio(variedad, proceso, sca_score, precioBase);
       return await reply(200,
         makeResponse(true, action,
-          `💰 Precio estimado para *${variedad}* (${proceso}):\n\n*$${precio} USD/kg FOB*\n\nPrecio bolsa NY: $${precioBase}/lb\nDiferencial Colombia + Huila incluido.`,
+          `Precio estimado para ${variedad} (${proceso}): $${precio} USD/kg FOB. Precio bolsa NY: $${precioBase}/lb. Diferencial Colombia + Huila incluido.`,
           { precio_calculado: precio, variedad, proceso, sca_score }
         ),
         logBase
@@ -463,9 +486,9 @@ export default async (req, res) => {
         [foto_url, lote_id, cleanFrom]
       );
       if (!result.affectedRows) {
-        return await reply(404, makeResponse(false, action, null, null, '❌ Lote no encontrado o no te pertenece.'), { ...logBase, error: 'Lote no encontrado' });
+        return await reply(404, makeResponse(false, action, null, null, 'Lote no encontrado o no te pertenece.'), { ...logBase, error: 'Lote no encontrado' });
       }
-      return await reply(200, makeResponse(true, action, '📸 ¡Foto actualizada! La imagen ya aparece en la ficha de tu lote.', { lote_id, foto_url }), logBase);
+      return await reply(200, makeResponse(true, action, 'Foto actualizada! La imagen ya aparece en la ficha de tu lote.', { lote_id, foto_url }), logBase);
     }
 
     // ══════════════════════════════════════════════════════════
@@ -477,8 +500,8 @@ export default async (req, res) => {
 
       if (!lote_id || !estado || !estadosValidos.includes(estado)) {
         return await reply(400,
-          makeResponse(false, action, null, null, `Estado inválido. Usa: ${estadosValidos.join(', ')}`),
-          { ...logBase, error: 'Estado inválido' }
+          makeResponse(false, action, null, null, `Estado invalido. Usa: ${estadosValidos.join(', ')}`),
+          { ...logBase, error: 'Estado invalido' }
         );
       }
 
@@ -490,25 +513,25 @@ export default async (req, res) => {
       );
 
       if (!result.affectedRows) {
-        return await reply(404, makeResponse(false, action, null, null, '❌ Lote no encontrado o no te pertenece.'), { ...logBase, error: 'Lote no encontrado' });
+        return await reply(404, makeResponse(false, action, null, null, 'Lote no encontrado o no te pertenece.'), { ...logBase, error: 'Lote no encontrado' });
       }
 
       return await reply(200,
-        makeResponse(true, action, `✅ Estado del lote actualizado a *${estado}*.`, { lote_id, estado }),
+        makeResponse(true, action, `Estado del lote actualizado a ${estado}.`, { lote_id, estado }),
         logBase
       );
     }
 
-    // ── Acción desconocida ─────────────────────────────────
+    // ── Accion desconocida ─────────────────────────────────
     return await reply(400,
       makeResponse(false, action, null, null,
-        `Acción desconocida: "${action}". Válidas: REGISTRAR_CAFICULTOR, REGISTRAR_LOTE, CONFIRMAR_PUBLICACION, CONSULTAR_MIS_LOTES, CONSULTAR_PRECIO, SUBIR_FOTO_LOTE, ACTUALIZAR_ESTADO_LOTE`
+        `Accion desconocida: "${action}". Validas: REGISTRAR_CAFICULTOR, REGISTRAR_LOTE, CONFIRMAR_PUBLICACION, CONSULTAR_MIS_LOTES, CONSULTAR_PRECIO, SUBIR_FOTO_LOTE, ACTUALIZAR_ESTADO_LOTE`
       ),
-      { ...logBase, error: `Acción desconocida: ${action}` }
+      { ...logBase, error: `Accion desconocida: ${action}` }
     );
 
   } catch (err) {
-    console.error('[webhook]', err.message);
+    console.error('[webhook:ERROR]', err.message);
     const duration_ms = Date.now() - startTime;
     await saveLog({ raw_body: rawBody, error: err.message, status_code: 500, duration_ms });
     return res.status(500).json(makeResponse(false, null, null, null, err.message));
