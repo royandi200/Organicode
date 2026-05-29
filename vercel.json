@@ -14,13 +14,10 @@
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/$1"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
+    { "source": "/api/lotes/:slug", "destination": "/api/lotes/[slug]" },
+    { "source": "/api/precios/actual", "destination": "/api/precios/actual" },
+    { "source": "/api/admin/ofertas/:id", "destination": "/api/admin/ofertas/[id]" },
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
