@@ -1,58 +1,24 @@
-// api/compradores.js — POST /api/compradores
-// Registra un nuevo comprador (desde landing o catálogo)
-import { getPool, corsHeaders } from './_lib/db.js';
+import { query, execute } from './_lib/db.js';
 
 export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') {
-    return res.status(200).setHeaders(corsHeaders()).end();
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).setHeaders(corsHeaders()).json({ ok: false, error: 'Método no permitido' });
-  }
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Content-Type', 'application/json');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Método no permitido' });
 
   const { nombre, empresa, email, pais, telefono, tipo } = req.body;
-
-  if (!nombre || !email) {
-    return res.status(400).setHeaders(corsHeaders()).json({ ok: false, error: 'nombre y email son requeridos' });
-  }
+  if (!nombre || !email) return res.status(400).json({ ok: false, error: 'nombre y email requeridos' });
 
   try {
-    const pool = getPool();
+    const existe = await query('SELECT id FROM compradores WHERE email = ? LIMIT 1', [email]);
+    if (existe.length) return res.status(200).json({ ok: true, data: { id: existe[0].id }, message: 'Ya registrado' });
 
-    // Verificar si ya existe
-    const [[existe]] = await pool.query(
-      'SELECT id FROM compradores WHERE email = ? LIMIT 1',
-      [email]
+    const result = await execute(
+      'INSERT INTO compradores (nombre, empresa, email, pais, telefono, tipo) VALUES (?, ?, ?, ?, ?, ?)',
+      [nombre, empresa || null, email, pais || null, telefono || null, tipo || 'importador']
     );
-
-    if (existe) {
-      return res.status(200).setHeaders(corsHeaders()).json({
-        ok: true,
-        data: { id: existe.id },
-        message: 'Comprador ya registrado'
-      });
-    }
-
-    const [result] = await pool.query(`
-      INSERT INTO compradores (nombre, empresa, email, pais, telefono, tipo)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `, [
-      nombre,
-      empresa  || null,
-      email,
-      pais     || null,
-      telefono || null,
-      tipo     || 'importador'
-    ]);
-
-    return res.status(201).setHeaders(corsHeaders()).json({
-      ok: true,
-      data: { id: result.insertId },
-      message: 'Comprador registrado exitosamente'
-    });
+    return res.status(201).json({ ok: true, data: { id: result.insertId } });
   } catch (err) {
-    console.error('[API /compradores]', err);
-    return res.status(500).setHeaders(corsHeaders()).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: err.message });
   }
 }
