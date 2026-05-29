@@ -33,7 +33,6 @@ function sanitizePhone(raw) {
   return digits.length >= 7 ? digits.slice(0, 20) : null;
 }
 
-// Extrae el primer JSON válido con campo "action" del texto del mensaje
 function extractActionJSON(raw) {
   if (typeof raw !== 'string') return null;
   const matches = [];
@@ -54,7 +53,6 @@ function extractActionJSON(raw) {
   return null;
 }
 
-// Genera slug URL-friendly desde texto
 function slugify(text) {
   return text
     .toString()
@@ -67,22 +65,16 @@ function slugify(text) {
     .slice(0, 100);
 }
 
-// SHA-256 para hash de trazabilidad
 function generarHash(lote_id, caficultor_id, timestamp) {
   return createHash('sha256')
     .update(`${lote_id}:${caficultor_id}:${timestamp}`)
     .digest('hex');
 }
 
-// Calcula precio estimado por variedad + proceso + sca_score
 function calcularPrecio(variedad, proceso, sca_score, precio_bolsa_usd = 2.50) {
-  // Base: precio ICE × 2.2046 (lb → kg)
   let base = precio_bolsa_usd * 2.2046;
+  base += 0.30 + 0.10; // diferencial Colombia + Huila
 
-  // Diferencial Colombia + Huila
-  base += 0.30 + 0.10;
-
-  // Diferencial por variedad
   const difVariedad = {
     'geisha': 10.00, 'bourbon rosado': 5.00, 'pink bourbon': 5.00,
     'wush wush': 4.50, 'colombia': 0.50, 'castillo': 0.30,
@@ -93,7 +85,6 @@ function calcularPrecio(variedad, proceso, sca_score, precio_bolsa_usd = 2.50) {
     if (varKey.includes(k)) { base += v; break; }
   }
 
-  // Diferencial por proceso
   const difProceso = {
     'natural': 0.80, 'honey': 0.50, 'anaeróbico': 1.20,
     'anaerobico': 1.20, 'lavado': 0,
@@ -103,7 +94,6 @@ function calcularPrecio(variedad, proceso, sca_score, precio_bolsa_usd = 2.50) {
     if (procKey.includes(k)) { base += v; break; }
   }
 
-  // Bono SCA
   const sca = Number(sca_score) || 0;
   if (sca >= 90) base += 3.00;
   else if (sca >= 88) base += 1.50;
@@ -155,12 +145,11 @@ export default async (req, res) => {
   };
 
   try {
-    // Parsear payload — mismo patrón que bardj-ai
     let payload = null;
-    if (typeof rawBody?.body === 'string')                    payload = extractActionJSON(rawBody.body);
-    if (!payload && typeof rawBody?.info === 'string')        payload = extractActionJSON(rawBody.info);
-    if (!payload && rawBody?.action)                          payload = rawBody;
-    if (!payload && typeof rawBody === 'string')              payload = extractActionJSON(rawBody);
+    if (typeof rawBody?.body === 'string')             payload = extractActionJSON(rawBody.body);
+    if (!payload && typeof rawBody?.info === 'string') payload = extractActionJSON(rawBody.info);
+    if (!payload && rawBody?.action)                   payload = rawBody;
+    if (!payload && typeof rawBody === 'string')       payload = extractActionJSON(rawBody);
 
     if (!payload) {
       return await reply(400,
@@ -176,8 +165,7 @@ export default async (req, res) => {
     if (!action) return await reply(400, makeResponse(false, null, null, null, 'Falta action'), { error: 'Falta action' });
 
     // ══════════════════════════════════════════════════════════
-    // A1. REGISTRAR_CAFICULTOR
-    // Registra o actualiza datos del caficultor por número WhatsApp
+    // 1. REGISTRAR_CAFICULTOR
     // ══════════════════════════════════════════════════════════
     if (action === 'REGISTRAR_CAFICULTOR') {
       const { nombre, finca, vereda, municipio, departamento, altitud_msnm, storytelling } = data;
@@ -189,7 +177,6 @@ export default async (req, res) => {
         );
       }
 
-      // Verificar si ya existe por teléfono
       const existing = await query(
         'SELECT id, nombre FROM caficultores WHERE telefono_wa = ? LIMIT 1',
         [cleanFrom]
@@ -211,7 +198,6 @@ export default async (req, res) => {
         );
       }
 
-      // Crear nuevo caficultor
       const newId = randomUUID();
       await query(
         `INSERT INTO caficultores (id, nombre, finca, vereda, municipio, departamento,
@@ -231,8 +217,7 @@ export default async (req, res) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // A2. REGISTRAR_LOTE
-    // Registra un nuevo lote en estado borrador
+    // 2. REGISTRAR_LOTE
     // ══════════════════════════════════════════════════════════
     if (action === 'REGISTRAR_LOTE') {
       const { variedad, proceso, tipo_secado, cantidad_kg, humedad, rendimiento, sca_score, notas_sensoriales, fecha_cosecha } = data;
@@ -244,7 +229,6 @@ export default async (req, res) => {
         );
       }
 
-      // Identificar caficultor por teléfono
       const caficultores = await query(
         'SELECT id, nombre, finca, municipio FROM caficultores WHERE telefono_wa = ? AND activo = 1 LIMIT 1',
         [cleanFrom]
@@ -261,8 +245,7 @@ export default async (req, res) => {
 
       const caficultor = caficultores[0];
 
-      // Calcular precio estimado
-      let precioBase = 2.50; // USD/lb ICE — usar precio dinámico cuando esté el cron
+      let precioBase = 2.50;
       try {
         const precioRows = await query(
           'SELECT precio_ice_usd_lb FROM precios_bolsa ORDER BY timestamp DESC LIMIT 1'
@@ -272,7 +255,6 @@ export default async (req, res) => {
 
       const precio_calculado = calcularPrecio(variedad, proceso, sca_score, precioBase);
 
-      // Generar slug único
       const baseSlug = slugify(`${variedad}-${caficultor.finca || caficultor.municipio}-${new Date().getFullYear()}`);
       const slugCheck = await query('SELECT COUNT(*) as cnt FROM lotes WHERE slug LIKE ?', [`${baseSlug}%`]);
       const suffix    = slugCheck[0].cnt > 0 ? `-${slugCheck[0].cnt + 1}` : '';
@@ -305,8 +287,7 @@ export default async (req, res) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // A3. CONFIRMAR_PUBLICACION
-    // Cambia estado del lote de borrador → publicado y genera hash
+    // 3. CONFIRMAR_PUBLICACION
     // ══════════════════════════════════════════════════════════
     if (action === 'CONFIRMAR_PUBLICACION') {
       const { lote_id } = data;
@@ -318,7 +299,6 @@ export default async (req, res) => {
         );
       }
 
-      // Verificar que el lote pertenece al caficultor
       const lotes = await query(
         `SELECT l.id, l.variedad, l.slug, l.precio_calculado, l.caficultor_id, c.nombre
          FROM lotes l JOIN caficultores c ON l.caficultor_id = c.id
@@ -333,10 +313,11 @@ export default async (req, res) => {
         );
       }
 
-      const lote = lotes[0];
-      const timestamp  = new Date().toISOString();
-      const hash       = generarHash(lote.id, lote.caficultor_id, timestamp);
-      const urlPublica = `${process.env.FRONTEND_URL || 'https://organicode.app'}/lote/${lote.slug}`;
+      const lote      = lotes[0];
+      const timestamp = new Date().toISOString();
+      const hash      = generarHash(lote.id, lote.caficultor_id, timestamp);
+      // ✅ URL correcta — frontend en Vercel
+      const urlPublica = `${process.env.FRONTEND_URL || 'https://organicode.vercel.app'}/lote/${lote.slug}`;
 
       await query(
         `UPDATE lotes SET estado='publicado', hash_registro=?, fecha_cosecha=COALESCE(fecha_cosecha, CURDATE()), updated_at=NOW()
@@ -344,7 +325,6 @@ export default async (req, res) => {
         [hash, lote.id]
       );
 
-      // Notificar dashboard admin por Pusher
       try {
         const pusher = getPusher();
         if (pusher) {
@@ -365,8 +345,7 @@ export default async (req, res) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // A4. CONSULTAR_MIS_LOTES
-    // Retorna lotes activos del caficultor
+    // 4. CONSULTAR_MIS_LOTES
     // ══════════════════════════════════════════════════════════
     if (action === 'CONSULTAR_MIS_LOTES') {
       const caficultores = await query(
@@ -414,13 +393,11 @@ export default async (req, res) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // A5. CONSULTAR_PRECIO
-    // Retorna precio actual del lote con desglose
+    // 5. CONSULTAR_PRECIO
     // ══════════════════════════════════════════════════════════
     if (action === 'CONSULTAR_PRECIO') {
       const { lote_id, variedad, proceso, sca_score } = data;
 
-      // Si mandan lote_id, buscar en BD
       if (lote_id) {
         const lotes = await query(
           `SELECT l.variedad, l.proceso, l.sca_score, l.precio_calculado, l.cantidad_kg
@@ -444,7 +421,6 @@ export default async (req, res) => {
         );
       }
 
-      // Calcular precio sobre la marcha sin lote_id
       if (!variedad || !proceso) {
         return await reply(400,
           makeResponse(false, action, null, null, 'Falta lote_id o los campos variedad + proceso'),
@@ -469,8 +445,7 @@ export default async (req, res) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // A6. SUBIR_FOTO_LOTE
-    // Actualiza foto_url del lote
+    // 6. SUBIR_FOTO_LOTE
     // ══════════════════════════════════════════════════════════
     if (action === 'SUBIR_FOTO_LOTE') {
       const { lote_id, foto_url } = data;
@@ -506,8 +481,7 @@ export default async (req, res) => {
     }
 
     // ══════════════════════════════════════════════════════════
-    // A7. ACTUALIZAR_ESTADO_LOTE
-    // Cambia estado: borrador→publicado, publicado→archivado, etc.
+    // 7. ACTUALIZAR_ESTADO_LOTE
     // ══════════════════════════════════════════════════════════
     if (action === 'ACTUALIZAR_ESTADO_LOTE') {
       const { lote_id, estado } = data;
