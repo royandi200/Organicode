@@ -476,7 +476,7 @@ export default async (req, res) => {
         `INSERT INTO solicitudes_muestra
            (lote_id, telefono_solicitante, nombre_contacto, empresa, email_contacto,
             direccion_entrega, ciudad_destino, pais_destino, zip_code, gramos_solicitados, estado, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 200, 'solicitada', NOW(), NOW())`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 200, 'pendiente', NOW(), NOW())`,
         [id, cleanFrom, nombre_contacto||null, empresa||null, email_contacto||null,
          direccion_entrega||null, ciudad_destino||null, pais_destino||null, zip_code||null]
       );
