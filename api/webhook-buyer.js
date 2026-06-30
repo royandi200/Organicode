@@ -26,7 +26,67 @@ async function notificar(canal, evento, datos) {
   }
 }
 
-// ── Helper: resolver slug → id ────────────────────────────────────────────────
+// ── Webhook logger — silencioso, nunca rompe el flujo ─────────────────────────
+async function logWebhook({ tipo, from_number, raw_body, parsed_json, response, status_code, error_msg, duration_ms }) {
+  try {
+    await execute(
+      `INSERT INTO webhook_logs
+         (tipo, from_number, action, raw_body, parsed_json, response, status_code, error, duration_ms, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        'buyer_api',
+        from_number  || null,
+        tipo         || null,
+        raw_body     ? JSON.stringify(raw_body).slice(0, 4000)   : null,
+        parsed_json  ? JSON.stringify(parsed_json).slice(0, 4000) : null,
+        response     ? JSON.stringify(response).slice(0, 4000)    : null,
+        status_code  || 200,
+        error_msg    || null,
+        duration_ms  || null,
+      ]
+    );
+  } catch (logErr) {
+    console.warn('[webhook_log] fallo al guardar log (no crítico):', logErr.message);
+  }
+}
+
+// ── Wrapper res.json() para capturar automáticamente status + body ─────────────
+function withLogging(req, res, body, fn) {
+  const t0 = Date.now();
+  const origJson = res.json.bind(res);
+  let captured = null;
+  res.json = (data) => {
+    captured = data;
+    return origJson(data);
+  };
+
+  return fn().then(async () => {
+    await logWebhook({
+      tipo:        body?.tipo,
+      from_number: body?.telefono || body?.email_contacto || null,
+      raw_body:    body,
+      parsed_json: body,
+      response:    captured,
+      status_code: res.statusCode,
+      error_msg:   captured?.ok === false ? (captured?.error || null) : null,
+      duration_ms: Date.now() - t0,
+    });
+  }).catch(async (err) => {
+    await logWebhook({
+      tipo:        body?.tipo,
+      from_number: body?.telefono || body?.email_contacto || null,
+      raw_body:    body,
+      parsed_json: body,
+      response:    { ok: false, error: err.message },
+      status_code: 500,
+      error_msg:   err.message,
+      duration_ms: Date.now() - t0,
+    });
+    throw err;
+  });
+}
+
+// ── Helper: resolver slug → id ─────────────────────────────────────────────────
 async function resolveLoteId(lote_id, lote_slug) {
   if (lote_id) return lote_id;
   if (!lote_slug) return null;
@@ -34,7 +94,7 @@ async function resolveLoteId(lote_id, lote_slug) {
   return rows.length ? rows[0].id : null;
 }
 
-// ── Helper: lote con precio — JOIN caficultores + precios_historico ────────
+// ── Helper: lote con precio — JOIN caficultores + precios_historico ────────────
 async function getLoteConPrecio(lote_id) {
   const rows = await query(`
     SELECT
@@ -53,7 +113,7 @@ async function getLoteConPrecio(lote_id) {
   return rows[0] || null;
 }
 
-// ── Helper: calcular precio — Number() explícito para strings de MySQL ────────
+// ── Helper: calcular precio ────────────────────────────────────────────────────
 function calcularPrecioLote(lote, precio) {
   const iceKg  = Number(precio?.precio_ice_kg)    || 4.80;
   const dCol   = (Number(precio?.diferencial_col)  || 0.40) * 2.2046;
@@ -75,13 +135,14 @@ function calcularPrecioLote(lote, precio) {
   return { exw: +exw.toFixed(2), fob, cif_eu, base: +base.toFixed(2), sca_prima: scaPrima };
 }
 
-// ══ HANDLER PRINCIPAL ══════════════════════════════════════════════════
+// ══ HANDLER PRINCIPAL ══════════════════════════════════════════════════════════
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ ok: false, error: 'Método no permitido' });
 
+  const body = req.body || {};
   const {
     tipo,
     telefono, nombre_contacto, empresa, email_contacto, pais, cargo, volumen_estimado_kg,
@@ -90,13 +151,14 @@ export default async function handler(req, res) {
     direccion_entrega, ciudad_destino, pais_destino, zip_code,
     variedad, proceso, sca_min, precio_max_usd,
     nivel_interes,
-  } = req.body;
+  } = body;
 
   if (!tipo) return res.status(400).json({ ok: false, error: 'Campo "tipo" es requerido' });
 
-  try {
+  // Toda la lógica corre dentro de withLogging — el log se escribe al terminar
+  return withLogging(req, res, body, async () => {
 
-    // ── 1. REGISTRAR_COMPRADOR ───────────────────────────────────────────────────────
+    // ── 1. REGISTRAR_COMPRADOR ──────────────────────────────────────────────────
     if (tipo === 'REGISTRAR_COMPRADOR') {
       if (!telefono) return res.status(400).json({ ok: false, error: 'telefono requerido' });
       const existe = await query(
@@ -127,7 +189,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── 2. CONSULTAR_CATALOGO ───────────────────────────────────────────────────────
+    // ── 2. CONSULTAR_CATALOGO ───────────────────────────────────────────────────
     if (tipo === 'CONSULTAR_CATALOGO') {
       let sql = `
         SELECT l.id, l.slug, l.nombre, l.variedad, l.proceso,
@@ -167,7 +229,7 @@ export default async function handler(req, res) {
     // resolver lote_id para acciones siguientes
     const resolvedLoteId = await resolveLoteId(lote_id, lote_slug);
 
-    // ── 3. CONSULTAR_PRECIO_LOTE ─────────────────────────────────────────────────────
+    // ── 3. CONSULTAR_PRECIO_LOTE ────────────────────────────────────────────────
     if (tipo === 'CONSULTAR_PRECIO_LOTE') {
       if (!resolvedLoteId) return res.status(400).json({ ok: false, error: 'lote_id o lote_slug requerido' });
       const lote = await getLoteConPrecio(resolvedLoteId);
@@ -184,7 +246,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── 4. HACER_OFERTA ─────────────────────────────────────────────────────────────
+    // ── 4. HACER_OFERTA ─────────────────────────────────────────────────────────
     if (tipo === 'HACER_OFERTA') {
       if (!resolvedLoteId) return res.status(400).json({ ok: false, error: 'lote_id o lote_slug requerido' });
       if (!precio_oferta)  return res.status(400).json({ ok: false, error: 'precio_oferta requerido' });
@@ -200,13 +262,24 @@ export default async function handler(req, res) {
           message: `⚠️ Oferta $${ofertaNum}/kg está bajo el mínimo $${precioMin.toFixed(2)}/kg FOB.`,
         });
       }
+      // Resolver comprador_id por email o teléfono
+      let compradorId = null;
+      if (email_contacto || telefono) {
+        const cField = email_contacto ? 'email_contacto' : 'telefono_wa';
+        const cVal   = email_contacto || telefono;
+        const cRows  = await query(`SELECT id FROM compradores WHERE ${cField} = ? LIMIT 1`, [cVal]);
+        compradorId  = cRows[0]?.id || null;
+      }
+      const volKg = volumen_sacos ? volumen_sacos * 70 : null;
       const result = await execute(
         `INSERT INTO ofertas
-           (lote_id, empresa, email_contacto, pais_destino, precio_oferta,
-            incoterm, volumen_sacos, mensaje, estado, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', NOW())`,
-        [resolvedLoteId, empresa||null, email_contacto||null, pais_destino||pais||null,
-         ofertaNum, incoterm||'FOB', volumen_sacos||null, mensaje||null]
+           (lote_id, comprador_id, telefono_comprador, empresa, email_contacto,
+            pais_destino, precio_oferta, incoterm, volumen_sacos, volumen_kg,
+            mensaje, estado, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', NOW())`,
+        [resolvedLoteId, compradorId, telefono||null, empresa||null, email_contacto||null,
+         pais_destino||pais||null, ofertaNum, incoterm||'FOB',
+         volumen_sacos||null, volKg, mensaje||null]
       );
       await execute(
         "UPDATE lotes SET estado = 'ofertado' WHERE id = ? AND estado = 'publicado'",
@@ -215,21 +288,22 @@ export default async function handler(req, res) {
       await notificar('organicode-admin', 'nueva-oferta', {
         oferta_id: result.insertId, lote_slug: lote.slug, variedad: lote.variedad,
         empresa: empresa||'No especificada', precio_oferta: ofertaNum,
-        incoterm: incoterm||'FOB', volumen_sacos,
+        incoterm: incoterm||'FOB', volumen_sacos, volumen_kg: volKg,
         pais_destino: pais_destino||pais||'No especificado',
         timestamp: new Date().toISOString(),
       });
       return res.status(201).json({
         ok: true,
-        data: { oferta_id: result.insertId, precio_aceptado: ofertaNum },
+        data: { oferta_id: result.insertId, precio_aceptado: ofertaNum, volumen_kg: volKg },
         message:
           `✅ *¡Oferta recibida! #${result.insertId}*\n` +
           `${lote.variedad} ${lote.proceso} | $${ofertaNum}/kg ${incoterm||'FOB'}\n` +
+          `Volumen: ${volumen_sacos} sacos (${volKg||'?'} kg)\n` +
           `Respuesta en menos de 24h hábiles.`,
       });
     }
 
-    // ── 5. SOLICITAR_MUESTRA ────────────────────────────────────────────────────────
+    // ── 5. SOLICITAR_MUESTRA ────────────────────────────────────────────────────
     if (tipo === 'SOLICITAR_MUESTRA') {
       if (!resolvedLoteId) return res.status(400).json({ ok: false, error: 'lote_id o lote_slug requerido' });
       const lote = await query(
@@ -264,15 +338,15 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── 6. CONSULTAR_MIS_OFERTAS ──────────────────────────────────────────────────
+    // ── 6. CONSULTAR_MIS_OFERTAS ────────────────────────────────────────────────
     if (tipo === 'CONSULTAR_MIS_OFERTAS') {
       if (!telefono && !email_contacto)
         return res.status(400).json({ ok: false, error: 'telefono o email_contacto requerido' });
       const filter = telefono
-        ? 'o.empresa IN (SELECT empresa FROM compradores WHERE telefono_wa = ? LIMIT 1)'
+        ? 'o.telefono_comprador = ?'
         : 'o.email_contacto = ?';
       const ofertas = await query(`
-        SELECT o.id, o.precio_oferta, o.incoterm, o.volumen_sacos, o.estado, o.created_at,
+        SELECT o.id, o.precio_oferta, o.incoterm, o.volumen_sacos, o.volumen_kg, o.estado, o.created_at,
                l.slug, l.variedad, l.proceso, l.sca_score
         FROM ofertas o JOIN lotes l ON l.id = o.lote_id
         WHERE ${filter} ORDER BY o.created_at DESC LIMIT 10
@@ -290,7 +364,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, data: ofertas, message: `📋 *Tus ofertas:*\n\n${lista}` });
     }
 
-    // ── 7. CONFIRMAR_INTERES ────────────────────────────────────────────────────────
+    // ── 7. CONFIRMAR_INTERES ────────────────────────────────────────────────────
     if (tipo === 'CONFIRMAR_INTERES') {
       if (!telefono) return res.status(400).json({ ok: false, error: 'telefono requerido' });
       await execute(
@@ -327,8 +401,8 @@ export default async function handler(req, res) {
       ],
     });
 
-  } catch (err) {
+  }).catch((err) => {
     console.error('[webhook-buyer] error:', err);
     return res.status(500).json({ ok: false, error: err.message });
-  }
+  });
 }
