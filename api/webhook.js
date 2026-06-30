@@ -225,7 +225,7 @@ export default async (req, res) => {
 
     // ── A1. REGISTRAR_CAFICULTOR ──────────────────────────────────────────
     if (action === 'REGISTRAR_CAFICULTOR') {
-      const { nombre, finca, vereda, municipio, departamento, altitud_msnm, storytelling } = data;
+      const { nombre, finca, vereda, municipio, departamento, altitud_msnm, storytelling, suelo, brillo_solar, precipitacion, microclima } = data;
       if (!nombre || !municipio) {
         return await reply(400, makeResponse(false, action, null, null, 'Faltan campos: nombre, municipio'), { ...logBase, error: 'Campos faltantes' });
       }
@@ -233,16 +233,21 @@ export default async (req, res) => {
       if (existing.length) {
         await query(
           `UPDATE caficultores SET nombre=?, finca=?, vereda=?, municipio=?, departamento=?,
-           altitud_msnm=?, storytelling=?, updated_at=NOW() WHERE id=?`,
-          [nombre, finca||null, vereda||null, municipio, departamento||'Huila', altitud_msnm||null, storytelling||null, existing[0].id]
+           altitud_msnm=?, storytelling=?,
+           suelo=COALESCE(?,suelo), brillo_solar=COALESCE(?,brillo_solar),
+           precipitacion=COALESCE(?,precipitacion), microclima=COALESCE(?,microclima),
+           updated_at=NOW() WHERE id=?`,
+          [nombre, finca||null, vereda||null, municipio, departamento||'Huila', altitud_msnm||null, storytelling||null,
+           suelo||null, brillo_solar||null, precipitacion||null, microclima||null, existing[0].id]
         );
         return await reply(200, makeResponse(true, action, `Datos actualizados, ${nombre}! Tu perfil en Organicode está al día.`, { caficultor_id: existing[0].id }), { ...logBase, tipo: 'caficultor' });
       }
       const newId = randomUUID();
       await query(
-        `INSERT INTO caficultores (id, nombre, finca, vereda, municipio, departamento, altitud_msnm, telefono_wa, storytelling, activo, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
-        [newId, nombre, finca||null, vereda||null, municipio, departamento||'Huila', altitud_msnm||null, cleanFrom, storytelling||null]
+        `INSERT INTO caficultores (id, nombre, finca, vereda, municipio, departamento, altitud_msnm, telefono_wa, storytelling, suelo, brillo_solar, precipitacion, microclima, activo, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), NOW())`,
+        [newId, nombre, finca||null, vereda||null, municipio, departamento||'Huila', altitud_msnm||null, cleanFrom, storytelling||null,
+         suelo||null, brillo_solar||null, precipitacion||null, microclima||null]
       );
       return await reply(200, makeResponse(true, action, `Bienvenido a Organicode, ${nombre}! Ya puedes registrar tus lotes.`, { caficultor_id: newId }), { ...logBase, tipo: 'caficultor' });
     }

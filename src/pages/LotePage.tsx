@@ -47,12 +47,12 @@ export function LotePage() {
       detalle: t.detalle,
       hash: t.hash_tx || null
     })),
-    suelo: mockLote?.suelo || 'Volcánico-Andosol',
-    brillo_solar: mockLote?.brillo_solar || '2,100 hrs/año',
-    precipitacion: mockLote?.precipitacion || '1,800 mm/año',
-    microclima: mockLote?.microclima || 'Cruce Andes-Amazonía',
+    suelo: apiLote.suelo || mockLote?.suelo || 'Volcánico-Andosol',
+    brillo_solar: apiLote.brillo_solar || mockLote?.brillo_solar || '2,100 hrs/año',
+    precipitacion: apiLote.precipitacion || mockLote?.precipitacion || '1,800 mm/año',
+    microclima: apiLote.microclima || mockLote?.microclima || 'Cruce Andes-Amazonía',
     cosecha: mockLote?.cosecha || apiLote.fecha_cosecha,
-    sugerencia_ia: mockLote?.sugerencia_ia || 'Perfil de especialidad. Recomendamos tueste claro para resaltar sus características únicas.',
+    sugerencia_ia: apiLote.sugerencia_ia || mockLote?.sugerencia_ia || 'Perfil de especialidad. Recomendamos tueste claro para resaltar sus características únicas.',
     storytelling_ia: apiLote.storytelling_ia || mockLote?.storytelling_ia || ''
   } : mockLote;
 

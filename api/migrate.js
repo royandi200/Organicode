@@ -57,6 +57,31 @@ export default async (req, res) => {
     }
   }
 
+  // ── 3. A1 — Campos faltantes de la ficha de lote (terruño + IA) ──
+  try {
+    await query(`
+      ALTER TABLE caficultores
+        ADD COLUMN IF NOT EXISTS suelo         VARCHAR(100) NULL,
+        ADD COLUMN IF NOT EXISTS brillo_solar  VARCHAR(50)  NULL,
+        ADD COLUMN IF NOT EXISTS precipitacion VARCHAR(50)  NULL,
+        ADD COLUMN IF NOT EXISTS microclima    VARCHAR(150) NULL
+    `);
+    results.push({ table: 'caficultores (suelo/brillo_solar/precipitacion/microclima)', status: 'OK ✅' });
+  } catch (e) {
+    results.push({ table: 'caficultores (terruño)', status: 'ERROR ❌', error: e.message });
+  }
+
+  try {
+    await query(`
+      ALTER TABLE lotes
+        ADD COLUMN IF NOT EXISTS sugerencia_ia   TEXT NULL,
+        ADD COLUMN IF NOT EXISTS storytelling_ia TEXT NULL
+    `);
+    results.push({ table: 'lotes (sugerencia_ia/storytelling_ia)', status: 'OK ✅' });
+  } catch (e) {
+    results.push({ table: 'lotes (IA)', status: 'ERROR ❌', error: e.message });
+  }
+
   return res.status(200).json({
     ok: true,
     mensaje: 'Migración completada',

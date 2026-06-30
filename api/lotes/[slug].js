@@ -10,13 +10,15 @@ export default async function handler(req, res) {
 
   try {
     const rows = await query(`
-      SELECT l.*, c.nombre AS caficultor_nombre, c.finca AS caficultor_finca,
+      SELECT l.*,
+        c.nombre AS caficultor_nombre, c.finca AS caficultor_finca,
         c.vereda AS caficultor_vereda, c.municipio AS caficultor_municipio,
         c.departamento AS caficultor_departamento,
         c.coordenadas_lat, c.coordenadas_lng, c.altitud_msnm,
         c.foto_url AS caficultor_foto, c.desde_anio AS caficultor_desde,
         c.valores AS caficultor_valores, c.storytelling AS caficultor_storytelling,
-        c.telefono_wa
+        c.telefono_wa,
+        c.suelo, c.brillo_solar, c.precipitacion, c.microclima
       FROM lotes l
       JOIN caficultores c ON c.id = l.caficultor_id
       WHERE l.slug = ?
