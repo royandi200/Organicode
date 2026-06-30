@@ -1,16 +1,34 @@
 import { query, execute } from './_lib/db.js';
 import Pusher from 'pusher';
 
-// ── Pusher client ──────────────────────────────────────────────────────────
-const pusher = new Pusher({
-  appId:   process.env.PUSHER_APP_ID,
-  key:     process.env.PUSHER_KEY,
-  secret:  process.env.PUSHER_SECRET,
-  cluster: process.env.PUSHER_CLUSTER || 'us2',
-  useTLS:  true,
-});
+// ── Pusher lazy-init ──────────────────────────────────────────────────────────
+// Solo se instancia si las vars de entorno están presentes.
+// Si faltan, notificar() falla silenciosamente: la oferta igual se guarda en BD.
+let _pusher = null;
+function getPusher() {
+  if (_pusher) return _pusher;
+  const { PUSHER_APP_ID, PUSHER_KEY, PUSHER_SECRET, PUSHER_CLUSTER } = process.env;
+  if (!PUSHER_APP_ID || !PUSHER_KEY || !PUSHER_SECRET) return null;
+  _pusher = new Pusher({
+    appId:   PUSHER_APP_ID,
+    key:     PUSHER_KEY,
+    secret:  PUSHER_SECRET,
+    cluster: PUSHER_CLUSTER || 'us2',
+    useTLS:  true,
+  });
+  return _pusher;
+}
 
-// ── Helper: resolver slug → id ─────────────────────────────────────────────
+async function notificar(canal, evento, datos) {
+  try {
+    const p = getPusher();
+    if (p) await p.trigger(canal, evento, datos);
+  } catch (e) {
+    console.warn('[pusher] notificación fallida (no crítico):', e.message);
+  }
+}
+
+// ── Helper: resolver slug → id ────────────────────────────────────────────────
 async function resolveLoteId(lote_id, lote_slug) {
   if (lote_id) return lote_id;
   if (!lote_slug) return null;
@@ -18,7 +36,7 @@ async function resolveLoteId(lote_id, lote_slug) {
   return rows.length ? rows[0].id : null;
 }
 
-// ── Helper: obtener perfil de lote con precio ─────────────────────────────
+// ── Helper: obtener perfil de lote con precio ─────────────────────────────────
 async function getLoteConPrecio(lote_id) {
   const rows = await query(`
     SELECT l.*, p.precio_ice_usd, p.precio_ice_kg, p.trm_cop,
@@ -32,9 +50,8 @@ async function getLoteConPrecio(lote_id) {
   return rows[0] || null;
 }
 
-// ── Helper: calcular precio con diferenciales ──────────────────────────────
+// ── Helper: calcular precio con diferenciales ─────────────────────────────────
 // Number() explícito porque Turso/SQLite devuelve campos numéricos como strings.
-// Sin este coerce, base + scaPrima produce concatenación y .toFixed() falla.
 function calcularPrecioLote(lote, precio) {
   const iceKg  = Number(precio?.precio_ice_kg)    || 4.80;
   const dCol   = (Number(precio?.diferencial_col)  || 0.40) * 2.2046;
@@ -56,9 +73,9 @@ function calcularPrecioLote(lote, precio) {
   return { exw: +exw.toFixed(2), fob, cif_eu, base: +base.toFixed(2), sca_prima: scaPrima };
 }
 
-// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 // HANDLER PRINCIPAL
-// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
@@ -79,9 +96,9 @@ export default async function handler(req, res) {
 
   try {
 
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     // 1. REGISTRAR_COMPRADOR
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     if (tipo === 'REGISTRAR_COMPRADOR') {
       if (!telefono) return res.status(400).json({ ok: false, error: 'telefono requerido' });
 
@@ -106,7 +123,7 @@ export default async function handler(req, res) {
          pais || null, cargo || null, volumen_estimado_kg || null]
       );
 
-      await pusher.trigger('organicode-admin', 'nuevo-comprador', {
+      await notificar('organicode-admin', 'nuevo-comprador', {
         comprador_id: result.insertId,
         nombre: nombre_contacto,
         empresa,
@@ -121,9 +138,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     // 2. CONSULTAR_CATALOGO
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     if (tipo === 'CONSULTAR_CATALOGO') {
       let sql = `
         SELECT l.id, l.slug, l.variedad, l.proceso, l.municipio, l.cantidad_kg,
@@ -165,12 +182,12 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── Para las acciones que necesitan lote_id, resolverlo aquí ──────────
+    // ── Para las acciones que necesitan lote_id, resolverlo aquí ──────────────
     const resolvedLoteId = await resolveLoteId(lote_id, lote_slug);
 
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     // 3. CONSULTAR_PRECIO_LOTE
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     if (tipo === 'CONSULTAR_PRECIO_LOTE') {
       if (!resolvedLoteId) return res.status(400).json({ ok: false, error: 'lote_id o lote_slug requerido' });
 
@@ -186,7 +203,7 @@ export default async function handler(req, res) {
           `💰 *Precio detallado — ${lote.variedad} ${lote.proceso}*\n\n` +
           `📊 Base ICE NY + diferenciales: $${precios.base} USD/kg\n` +
           `⭐ Prima SCA (${lote.sca_score} pts): +$${precios.sca_prima} USD/kg\n` +
-          `─────────────────────────\n` +
+          `─────────────────────────────\n` +
           `• EXW finca:       $${precios.exw} USD/kg\n` +
           `• FOB Cartagena:   $${precios.fob} USD/kg ✅\n` +
           `• CIF Europa:      $${precios.cif_eu} USD/kg\n\n` +
@@ -195,9 +212,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     // 4. HACER_OFERTA
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     if (tipo === 'HACER_OFERTA') {
       if (!resolvedLoteId) return res.status(400).json({ ok: false, error: 'lote_id o lote_slug requerido' });
       if (!precio_oferta)  return res.status(400).json({ ok: false, error: 'precio_oferta requerido' });
@@ -236,7 +253,7 @@ export default async function handler(req, res) {
         [resolvedLoteId]
       );
 
-      await pusher.trigger('organicode-admin', 'nueva-oferta', {
+      await notificar('organicode-admin', 'nueva-oferta', {
         oferta_id:     result.insertId,
         lote_slug:     lote.slug,
         variedad:      lote.variedad,
@@ -261,9 +278,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     // 5. SOLICITAR_MUESTRA
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     if (tipo === 'SOLICITAR_MUESTRA') {
       if (!resolvedLoteId) return res.status(400).json({ ok: false, error: 'lote_id o lote_slug requerido' });
 
@@ -282,7 +299,7 @@ export default async function handler(req, res) {
          pais_destino || pais || null, zip_code || null]
       );
 
-      await pusher.trigger('organicode-admin', 'nueva-muestra', {
+      await notificar('organicode-admin', 'nueva-muestra', {
         solicitud_id: result.insertId,
         lote_slug:    lote[0].slug,
         variedad:     lote[0].variedad,
@@ -305,9 +322,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     // 6. CONSULTAR_MIS_OFERTAS
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     if (tipo === 'CONSULTAR_MIS_OFERTAS') {
       if (!telefono && !email_contacto) {
         return res.status(400).json({ ok: false, error: 'telefono o email_contacto requerido' });
@@ -350,9 +367,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     // 7. CONFIRMAR_INTERES  (lead HOT → notifica al Closer)
-    // ──────────────────────────────────────────────────────────────────────
+    // ──────────────────────────────────────────────────────────────────────────
     if (tipo === 'CONFIRMAR_INTERES') {
       if (!telefono) return res.status(400).json({ ok: false, error: 'telefono requerido' });
 
@@ -371,7 +388,7 @@ export default async function handler(req, res) {
         ? await query('SELECT slug, variedad, proceso, precio_calculado FROM lotes WHERE id = ? LIMIT 1', [resolvedLoteId])
         : [];
 
-      await pusher.trigger('organicode-admin', 'lead-hot', {
+      await notificar('organicode-admin', 'lead-hot', {
         comprador_id:   comprador[0]?.id,
         nombre:         comprador[0]?.nombre_contacto || 'Desconocido',
         empresa:        comprador[0]?.empresa,
@@ -398,7 +415,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ── Acción no reconocida ───────────────────────────────────────────────
+    // ── Acción no reconocida ───────────────────────────────────────────────────
     return res.status(400).json({
       ok: false,
       error: `Acción '${tipo}' no reconocida`,
