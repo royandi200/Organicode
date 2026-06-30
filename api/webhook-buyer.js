@@ -33,23 +33,25 @@ async function getLoteConPrecio(lote_id) {
 }
 
 // ── Helper: calcular precio con diferenciales ──────────────────────────────
+// Number() explícito porque Turso/SQLite devuelve campos numéricos como strings.
+// Sin este coerce, base + scaPrima produce concatenación y .toFixed() falla.
 function calcularPrecioLote(lote, precio) {
-  const iceKg        = precio?.precio_ice_kg  || 4.80;
-  const dCol         = (precio?.diferencial_col  || 0.40) * 2.2046;
-  const dHui         = (precio?.diferencial_hui  || 0.10) * 2.2046;
-  const dTrace       = precio?.diferencial_trace || 0.50;
+  const iceKg  = Number(precio?.precio_ice_kg)    || 4.80;
+  const dCol   = (Number(precio?.diferencial_col)  || 0.40) * 2.2046;
+  const dHui   = (Number(precio?.diferencial_hui)  || 0.10) * 2.2046;
+  const dTrace = Number(precio?.diferencial_trace) || 0.50;
 
-  const scaScore     = parseFloat(lote.sca_score) || 84;
-  const scaPrima     = scaScore >= 90 ? 20
-                      : scaScore >= 88 ? 12
-                      : scaScore >= 86 ? 6
-                      : scaScore >= 84 ? 2
-                      : 0;
+  const scaScore = Number(lote.sca_score) || 84;
+  const scaPrima = scaScore >= 90 ? 20
+                 : scaScore >= 88 ? 12
+                 : scaScore >= 86 ? 6
+                 : scaScore >= 84 ? 2
+                 : 0;
 
-  const base    = iceKg + dCol + dHui + dTrace;
-  const exw     = base + scaPrima;
-  const fob     = +(exw + 0.77).toFixed(2);
-  const cif_eu  = +(exw + 1.97).toFixed(2);
+  const base   = iceKg + dCol + dHui + dTrace;
+  const exw    = base + scaPrima;
+  const fob    = +(exw + 0.77).toFixed(2);
+  const cif_eu = +(exw + 1.97).toFixed(2);
 
   return { exw: +exw.toFixed(2), fob, cif_eu, base: +base.toFixed(2), sca_prima: scaPrima };
 }
@@ -65,17 +67,11 @@ export default async function handler(req, res) {
 
   const {
     tipo,
-    // Identificadores del comprador
     telefono, nombre_contacto, empresa, email_contacto, pais, cargo, volumen_estimado_kg,
-    // Identificadores del lote
     lote_id, lote_slug,
-    // Parámetros de oferta
     precio_oferta, incoterm, volumen_sacos, mensaje,
-    // Parámetros de dirección para muestra
     direccion_entrega, ciudad_destino, pais_destino, zip_code,
-    // Parámetros de filtro para catálogo
     variedad, proceso, sca_min, precio_max_usd,
-    // Lead scoring
     nivel_interes,
   } = req.body;
 
@@ -206,13 +202,12 @@ export default async function handler(req, res) {
       if (!resolvedLoteId) return res.status(400).json({ ok: false, error: 'lote_id o lote_slug requerido' });
       if (!precio_oferta)  return res.status(400).json({ ok: false, error: 'precio_oferta requerido' });
 
-      // Validar precio mínimo contra precio calculado del lote
       const lote = await getLoteConPrecio(resolvedLoteId);
       if (!lote) return res.status(404).json({ ok: false, error: 'Lote no encontrado' });
 
-      const precios    = calcularPrecioLote(lote, lote);
-      const precioMin  = precios.fob * 0.90; // mínimo: 90% del FOB calculado
-      const ofertaNum  = parseFloat(precio_oferta);
+      const precios   = calcularPrecioLote(lote, lote);
+      const precioMin = precios.fob * 0.90;
+      const ofertaNum = parseFloat(precio_oferta);
 
       if (ofertaNum < precioMin) {
         return res.status(422).json({
@@ -241,17 +236,16 @@ export default async function handler(req, res) {
         [resolvedLoteId]
       );
 
-      // Notificar al admin y al Closer vía Pusher (canal compartido con caficultor)
       await pusher.trigger('organicode-admin', 'nueva-oferta', {
-        oferta_id:    result.insertId,
-        lote_slug:    lote.slug,
-        variedad:     lote.variedad,
-        empresa:      empresa || 'No especificada',
+        oferta_id:     result.insertId,
+        lote_slug:     lote.slug,
+        variedad:      lote.variedad,
+        empresa:       empresa || 'No especificada',
         precio_oferta: ofertaNum,
-        incoterm:     incoterm || 'FOB',
+        incoterm:      incoterm || 'FOB',
         volumen_sacos,
-        pais_destino: pais_destino || pais || 'No especificado',
-        timestamp:    new Date().toISOString(),
+        pais_destino:  pais_destino || pais || 'No especificado',
+        timestamp:     new Date().toISOString(),
       });
 
       return res.status(201).json({
@@ -378,16 +372,16 @@ export default async function handler(req, res) {
         : [];
 
       await pusher.trigger('organicode-admin', 'lead-hot', {
-        comprador_id:  comprador[0]?.id,
-        nombre:        comprador[0]?.nombre_contacto || 'Desconocido',
-        empresa:       comprador[0]?.empresa,
-        pais:          comprador[0]?.pais,
-        lote_slug:     loteInfo[0]?.slug,
-        variedad:      loteInfo[0]?.variedad,
-        precio_lote:   loteInfo[0]?.precio_calculado,
+        comprador_id:   comprador[0]?.id,
+        nombre:         comprador[0]?.nombre_contacto || 'Desconocido',
+        empresa:        comprador[0]?.empresa,
+        pais:           comprador[0]?.pais,
+        lote_slug:      loteInfo[0]?.slug,
+        variedad:       loteInfo[0]?.variedad,
+        precio_lote:    loteInfo[0]?.precio_calculado,
         telefono,
         mensaje_closer: `🔥 LEAD HOT — ${comprador[0]?.empresa || nombre_contacto} (${comprador[0]?.pais}) confirmó interés en ${loteInfo[0]?.variedad || 'un lote'}. Contactar en < 2h.`,
-        timestamp:     new Date().toISOString(),
+        timestamp:      new Date().toISOString(),
       });
 
       return res.status(200).json({
