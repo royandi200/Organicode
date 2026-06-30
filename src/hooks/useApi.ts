@@ -101,11 +101,16 @@ export const useAdminMuestras    = makeAdminHook('/api/admin/muestras');
 
 // ─── MUTATIONS ─────────────────────────────────────────────────────────────
 
-export async function postOferta(payload: object) {
-  const r = await fetch(`${BASE}/api/webhook-buyer`, {
+// NOTA: antes esto llamaba a /api/webhook-buyer (formato {tipo, telefono, ...}),
+// un endpoint paralelo que NO hablaba el mismo contrato que usa Emilio por
+// WhatsApp ({action, from, data}). Se eliminó webhook-buyer.js — ahora el
+// formulario web y WhatsApp pasan por el mismo único webhook.
+export async function postOferta(payload: { tipo: string; [key: string]: unknown }) {
+  const { tipo, ...data } = payload;
+  const r = await fetch(`${BASE}/api/webhook`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ action: tipo, from: (data.telefono as string) || '', data }),
   });
   return r.json();
 }

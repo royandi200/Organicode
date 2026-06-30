@@ -105,7 +105,7 @@ BuilderBot llama `POST /api/webhook` con el siguiente contrato:
 |---|---|---|---|---|---|
 | A1 | E-commerce Web & Mobile | **Organicode Digital Hub** | WebApp `/catalogo` + `/lote/[slug]` | `src/pages/Catalogo.jsx`, `src/pages/Lote.jsx` | S3–S4 |
 | A2 | WhatsApp IA Caficultor | **Organicode Co-Pilot** | BuilderBot → `/api/webhook.js` | `api/webhook.js`, `bot/flows/caficultor.js` | S1–S2 |
-| A3 | WhatsApp B2B Global | **Global Buyer Concierge** | BuilderBot → `/api/webhook-buyer.js` | `api/webhook-buyer.js`, `bot/flows/comprador.js` | S5–S6 |
+| A3 | WhatsApp B2B Global | **Global Buyer Concierge** | `/api/webhook.js` (unificado con A2 — `api/webhook-buyer.js` se eliminó, ver nota abajo) | `api/webhook.js`, `bot/flows/comprador.js` | S5–S6 |
 | A4 | Algoritmo Precios Dinámico | **Organicode Pricing Engine** | Vercel Cron + lib | `api/cron/precio-bolsa.js`, `api/_lib/pricing.js` | S2 |
 | A5 | Quality Matchmaking Engine | **Match Engine** | Función interna del webhook-buyer | `api/_lib/matchmaking.js` | S5 |
 | A6 | Blockchain Trazabilidad | **Organicode Trust Network** | **Fase 2** — por ahora SHA-256 en MySQL | `api/_lib/hash.js` → luego `contracts/OrganicodeTracker.sol` | S7+ |
@@ -113,6 +113,17 @@ BuilderBot llama `POST /api/webhook` con el siguiente contrato:
 | A8 | Business Intelligence | **Organicode Analytics** | WebApp `/admin/analytics` | `src/pages/admin/Analytics.jsx`, `api/analytics.js` | S7–S8 |
 
 ### Progresión de A6 (Blockchain) — no bloquea el MVP
+
+> **Nota de arquitectura (2026-06-30):** `api/webhook-buyer.js` se eliminó.
+> El prompt de Emilio (caficultor + comprador) solo genera bloques con
+> el contrato `{"acti@n", "from", "data":{}}`, y ese contrato lo maneja
+> únicamente `api/webhook.js` — que ya tenía las 14 acciones (A2 + A3)
+> implementadas por dentro. `webhook-buyer.js` era un endpoint paralelo
+> con un contrato distinto (`tipo`/`telefono`) que solo usaba el
+> formulario web (oferta/muestra desde `/lote/[slug]`), nunca WhatsApp.
+> Ahora el formulario web también llama a `/api/webhook` (ver
+> `src/hooks/useApi.ts → postOferta()`), así que A2 y A3 son un único
+> webhook real, no dos.
 
 ```
 MVP (Sprint 1)    →  hash_lote = SHA256(lote_id + timestamp + productor_id)

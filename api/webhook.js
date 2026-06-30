@@ -3,7 +3,7 @@
 // Respuesta SIEMPRE: { ok, action, mensaje, data, error }
 // Soporta "action" y "acti@n" (BuilderBot AI)
 
-import { query } from './_lib/db.js';
+import { query, execute } from './_lib/db.js';
 import { randomUUID, createHash } from 'crypto';
 import Pusher from 'pusher';
 
@@ -433,7 +433,8 @@ export default async (req, res) => {
       if (Number(precio_oferta) < precioMin) {
         return await reply(400, makeResponse(false, action,
           `Oferta por debajo del mínimo aceptable. Precio FOB: $${precios.fob}/kg. Mínimo de oferta: $${precioMin.toFixed(2)}/kg.`,
-          { precio_min: precioMin.toFixed(2), precio_fob: precios.fob }
+          { precio_min_aceptable: Number(precioMin.toFixed(2)), precio_fob: precios.fob },
+          'oferta_bajo_minimo'
         ), { ...logBase, error: 'oferta_bajo_minimo', tipo: 'comprador' });
       }
       const ofertaId = randomUUID();
@@ -466,14 +467,20 @@ export default async (req, res) => {
       const lote = await query('SELECT id, variedad, proceso, estado FROM lotes WHERE id = ? LIMIT 1', [id]);
       if (!lote.length) return await reply(404, makeResponse(false, action, null, null, 'Lote no encontrado.'), { ...logBase, error: 'No encontrado' });
       if (lote[0].estado === 'vendido') return await reply(400, makeResponse(false, action, null, null, 'Este lote ya fue vendido. Escribe CATALOGO para ver otros.'), { ...logBase, error: 'Lote vendido' });
-      const muestraId = randomUUID();
-      await query(
-        `INSERT INTO muestras (id, lote_id, telefono_comprador, nombre_contacto, empresa, email_contacto,
-         direccion_entrega, ciudad_destino, pais_destino, zip_code, estado, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'solicitada', NOW(), NOW())`,
-        [muestraId, id, cleanFrom, nombre_contacto||null, empresa||null, email_contacto||null,
+      // NOTA: antes esto insertaba en la tabla `muestras`, que el panel
+      // admin (api/admin/muestras.js) nunca lee — las solicitudes que
+      // llegaban por WhatsApp eran invisibles para el equipo. Ahora usa
+      // `solicitudes_muestra`, la misma tabla que ya alimenta el formulario
+      // web y que sí tiene seguimiento de envío (numero_guia/courier).
+      const result = await execute(
+        `INSERT INTO solicitudes_muestra
+           (lote_id, telefono_solicitante, nombre_contacto, empresa, email_contacto,
+            direccion_entrega, ciudad_destino, pais_destino, zip_code, gramos_solicitados, estado, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 200, 'solicitada', NOW(), NOW())`,
+        [id, cleanFrom, nombre_contacto||null, empresa||null, email_contacto||null,
          direccion_entrega||null, ciudad_destino||null, pais_destino||null, zip_code||null]
       );
+      const muestraId = result.insertId;
       try {
         const pusher = getPusher();
         if (pusher) await pusher.trigger('organicode-admin', 'nueva-muestra', {
