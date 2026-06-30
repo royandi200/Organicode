@@ -8,19 +8,21 @@ import {
 import { useLotes, usePrecioActual } from '@/hooks/useApi';
 import { lotes as mockLotes, precioActual as mockPrecio } from '@/data/mock';
 import { useAppStore } from '@/store';
+import { useLang } from '@/context/LangContext';
 
 /* ── Lote Card ── */
 function CatalogLoteCard({ lote, index }: { lote: any; index: number }) {
   const { openOfferModal, openSampleModal } = useAppStore();
+  const { t } = useLang();
   const scaScore = parseFloat(lote.sca_score);
   const precio = parseFloat(lote.precio_calculado);
   const scaColor = scaScore >= 87 ? 'bg-huila-green/10 text-huila-green' : scaScore >= 85 ? 'bg-volcanic-gold/10 text-volcanic-gold' : 'bg-text-muted/10 text-text-muted';
   const estadoConfig: Record<string, { label: string; color: string }> = {
-    publicado:  { label: 'DISPONIBLE', color: 'bg-huila-green/10 text-huila-green border-huila-green/30' },
-    ofertado:   { label: 'OFERTADO',   color: 'bg-volcanic-gold/10 text-volcanic-gold border-volcanic-gold/30' },
-    vendido:    { label: 'VENDIDO',    color: 'bg-warm-rust/10 text-warm-rust border-warm-rust/30' },
-    borrador:   { label: 'BORRADOR',   color: 'bg-text-muted/10 text-text-muted border-text-muted/30' },
-    archivado:  { label: 'ARCHIVADO',  color: 'bg-text-muted/5 text-text-muted border-text-muted/20 opacity-50' },
+    publicado:  { label: t('cat.available_label'), color: 'bg-huila-green/10 text-huila-green border-huila-green/30' },
+    ofertado:   { label: t('cat.offered_label'),   color: 'bg-volcanic-gold/10 text-volcanic-gold border-volcanic-gold/30' },
+    vendido:    { label: t('cat.sold_label'),      color: 'bg-warm-rust/10 text-warm-rust border-warm-rust/30' },
+    borrador:   { label: t('cat.draft_label'),     color: 'bg-text-muted/10 text-text-muted border-text-muted/30' },
+    archivado:  { label: t('cat.archived_label'),  color: 'bg-text-muted/5 text-text-muted border-text-muted/20 opacity-50' },
   };
   const estado = estadoConfig[lote.estado] || estadoConfig.borrador;
   const notas = (lote.notas_sensoriales || '').split(',').slice(0, 3);
@@ -35,21 +37,15 @@ function CatalogLoteCard({ lote, index }: { lote: any; index: number }) {
         <img src={lote.foto_url || '/images/farm-aerial.jpg'} alt={lote.nombre}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
         <div className="absolute top-3 left-3 flex gap-2">
-          <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${scaColor} border-current`}>
-            {scaScore} SCA
-          </span>
-          <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${estado.color}`}>
-            {estado.label}
-          </span>
+          <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${scaColor} border-current`}>{scaScore} SCA</span>
+          <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${estado.color}`}>{estado.label}</span>
         </div>
       </div>
       <div className="p-5">
         <h3 className="font-display text-lg text-text-warm group-hover:text-volcanic-gold transition-colors mb-1">
           <Link to={`/lote/${lote.slug}`}>{lote.nombre}</Link>
         </h3>
-        <p className="text-xs text-text-sand mb-3">
-          {lote.variedad} · {lote.proceso} · {lote.caficultor_municipio || lote.municipio}
-        </p>
+        <p className="text-xs text-text-sand mb-3">{lote.variedad} · {lote.proceso} · {lote.caficultor_municipio || lote.municipio}</p>
         <div className="flex flex-wrap gap-1.5 mb-4">
           {notas.map((n: string) => (
             <span key={n} className="px-2 py-0.5 bg-volcanic-gold/5 border border-volcanic-gold/20 rounded-full text-[10px] text-volcanic-gold">{n.trim()}</span>
@@ -61,8 +57,8 @@ function CatalogLoteCard({ lote, index }: { lote: any; index: number }) {
             <span className="text-xs text-text-sand">/kg</span>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => openSampleModal(lote)} className="px-3 py-1.5 text-xs text-text-sand border border-gold-subtle rounded-lg hover:border-volcanic-gold transition-colors">Muestra</button>
-            <button onClick={() => openOfferModal(lote)} className="px-3 py-1.5 text-xs bg-volcanic-gold text-void rounded-lg hover:bg-volcanic-gold/90 transition-colors">Oferta</button>
+            <button onClick={() => openSampleModal(lote)} className="px-3 py-1.5 text-xs text-text-sand border border-gold-subtle rounded-lg hover:border-volcanic-gold transition-colors">{t('lote.sample')}</button>
+            <button onClick={() => openOfferModal(lote)} className="px-3 py-1.5 text-xs bg-volcanic-gold text-void rounded-lg hover:bg-volcanic-gold/90 transition-colors">{t('lote.offer')}</button>
           </div>
         </div>
       </div>
@@ -72,6 +68,7 @@ function CatalogLoteCard({ lote, index }: { lote: any; index: number }) {
 
 /* ── Coffee Matcher ── */
 function CoffeeMatcher({ onComplete }: { onComplete: (prefs: any) => void }) {
+  const { t } = useLang();
   const [step, setStep] = useState(0);
   const [prefs, setPrefs] = useState({ volumen: '', perfil: [] as string[], scaMin: 82, presupuesto: 50 });
   const [collapsed, setCollapsed] = useState(false);
@@ -81,7 +78,7 @@ function CoffeeMatcher({ onComplete }: { onComplete: (prefs: any) => void }) {
       <div className="glass-panel rounded-xl p-4 flex items-center justify-between cursor-pointer hover:border-volcanic-gold/30 transition-colors" onClick={() => setCollapsed(false)}>
         <div className="flex items-center gap-3">
           <Coffee className="w-5 h-5 text-volcanic-gold" />
-          <span className="text-sm text-text-warm font-medium">Coffee Matcher — Encuentra tu lote ideal</span>
+          <span className="text-sm text-text-warm font-medium">{t('matcher.collapsed')}</span>
         </div>
         <ChevronDown className="w-4 h-4 text-text-muted" />
       </div>
@@ -89,25 +86,25 @@ function CoffeeMatcher({ onComplete }: { onComplete: (prefs: any) => void }) {
   }
 
   const steps = [
-    { title: 'Volumen', desc: '¿Qué cantidad necesitas?' },
-    { title: 'Perfil', desc: '¿Qué sabor buscas?' },
-    { title: 'SCA', desc: 'Calidad mínima' },
-    { title: 'Presupuesto', desc: 'Rango de precio' },
+    { title: t('lote.variety'), desc: t('matcher.vol') },
+    { title: t('lote.process'), desc: t('matcher.taste') },
+    { title: 'SCA',            desc: t('matcher.sca') },
+    { title: 'USD',            desc: t('matcher.budget') },
   ];
 
   const volumenOptions = [
-    { value: 'muestra', label: 'Muestra (200g gratis)', icon: Package },
-    { value: 'microlote', label: 'Microlote (1–10 sacos)', icon: Coffee },
-    { value: 'lote', label: 'Lote completo (10–50 sacos)', icon: Package },
-    { value: 'contenedor', label: 'Contenedor (300+ sacos)', icon: Package },
+    { value: 'muestra',     label: t('matcher.vol_sample'), icon: Package },
+    { value: 'microlote',   label: t('matcher.vol_micro'),  icon: Coffee },
+    { value: 'lote',        label: t('matcher.vol_lot'),    icon: Package },
+    { value: 'contenedor',  label: t('matcher.vol_cont'),   icon: Package },
   ];
 
   const perfilOptions = [
-    { value: 'chocolate', label: 'Clásico achocolatado', emoji: '🍫' },
-    { value: 'citrus', label: 'Cítrico y brillante', emoji: '🍋' },
-    { value: 'floral', label: 'Floral y delicado', emoji: '🌸' },
-    { value: 'exotico', label: 'Exótico fermentado', emoji: '🍷' },
-    { value: 'dulce', label: 'Dulce y miel', emoji: '🍯' },
+    { value: 'chocolate', label: t('matcher.taste_choc'), emoji: '🍫' },
+    { value: 'citrus',    label: t('matcher.taste_cit'),  emoji: '🍋' },
+    { value: 'floral',    label: t('matcher.taste_flor'), emoji: '🌸' },
+    { value: 'exotico',   label: t('matcher.taste_exo'),  emoji: '🍷' },
+    { value: 'dulce',     label: t('matcher.taste_swe'),  emoji: '🍯' },
   ];
 
   const handleNext = () => {
@@ -121,8 +118,8 @@ function CoffeeMatcher({ onComplete }: { onComplete: (prefs: any) => void }) {
         <div className="flex items-center gap-3">
           <Coffee className="w-5 h-5 text-volcanic-gold" />
           <div>
-            <h3 className="text-sm font-medium text-text-warm">Coffee Matcher</h3>
-            <p className="text-xs text-text-muted">Encuentra tu lote ideal en 4 preguntas</p>
+            <h3 className="text-sm font-medium text-text-warm">{t('matcher.title')}</h3>
+            <p className="text-xs text-text-muted">{t('matcher.sub')}</p>
           </div>
         </div>
         <button onClick={() => setCollapsed(true)} className="text-text-muted hover:text-text-warm transition-colors"><X className="w-4 h-4" /></button>
@@ -155,7 +152,7 @@ function CoffeeMatcher({ onComplete }: { onComplete: (prefs: any) => void }) {
           )}
           {step === 1 && (
             <motion.div key="perfil" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-              <p className="text-sm text-text-sand mb-4">Selecciona uno o más</p>
+              <p className="text-sm text-text-sand mb-4">{t('matcher.taste')}</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {perfilOptions.map(opt => (
                   <button key={opt.value} onClick={() => {
@@ -173,35 +170,30 @@ function CoffeeMatcher({ onComplete }: { onComplete: (prefs: any) => void }) {
           )}
           {step === 2 && (
             <motion.div key="sca" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-              <p className="text-sm text-text-sand mb-6">Puntaje SCA mínimo: <strong className="text-volcanic-gold font-mono-data">{prefs.scaMin}</strong></p>
+              <p className="text-sm text-text-sand mb-6">{t('matcher.sca')} <strong className="text-volcanic-gold font-mono-data">{prefs.scaMin}</strong></p>
               <div className="flex justify-between text-[10px] text-text-muted uppercase tracking-wider mb-2">
-                <span>82 Comercial</span><span>85 Premium</span><span>87 Specialty</span><span>95 Ultra</span>
+                <span>82</span><span>85</span><span>87</span><span>95</span>
               </div>
-              <input type="range" min={82} max={95} value={prefs.scaMin}
-                onChange={(e) => setPrefs({ ...prefs, scaMin: Number(e.target.value) })}
-                className="w-full accent-volcanic-gold" />
+              <input type="range" min={82} max={95} value={prefs.scaMin} onChange={(e) => setPrefs({ ...prefs, scaMin: Number(e.target.value) })} className="w-full accent-volcanic-gold" />
             </motion.div>
           )}
           {step === 3 && (
             <motion.div key="presupuesto" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-              <p className="text-sm text-text-sand mb-6">Presupuesto máximo: <strong className="text-volcanic-gold font-mono-data">${prefs.presupuesto}/kg</strong></p>
+              <p className="text-sm text-text-sand mb-6">{t('matcher.budget')} <strong className="text-volcanic-gold font-mono-data">${prefs.presupuesto}/kg</strong></p>
               <div className="flex justify-between text-[10px] text-text-muted uppercase tracking-wider mb-2">
                 <span>$5</span><span>$25</span><span>$50+</span>
               </div>
-              <input type="range" min={5} max={50} value={prefs.presupuesto}
-                onChange={(e) => setPrefs({ ...prefs, presupuesto: Number(e.target.value) })}
-                className="w-full accent-volcanic-gold" />
+              <input type="range" min={5} max={50} value={prefs.presupuesto} onChange={(e) => setPrefs({ ...prefs, presupuesto: Number(e.target.value) })} className="w-full accent-volcanic-gold" />
             </motion.div>
           )}
         </AnimatePresence>
       </div>
       <div className="flex justify-between mt-6">
         {step > 0 && (
-          <button onClick={() => setStep(step - 1)} className="text-sm text-text-sand hover:text-text-warm transition-colors">← Anterior</button>
+          <button onClick={() => setStep(step - 1)} className="text-sm text-text-sand hover:text-text-warm transition-colors">{t('matcher.prev')}</button>
         )}
-        <button onClick={handleNext}
-          className="ml-auto flex items-center gap-2 px-5 py-2.5 bg-volcanic-gold text-void text-sm font-medium rounded-lg hover:bg-volcanic-gold/90 transition-colors">
-          {step < 3 ? 'Siguiente' : 'Ver resultados'}<ChevronRight className="w-4 h-4" />
+        <button onClick={handleNext} className="ml-auto flex items-center gap-2 px-5 py-2.5 bg-volcanic-gold text-void text-sm font-medium rounded-lg hover:bg-volcanic-gold/90 transition-colors">
+          {step < 3 ? t('matcher.next') : t('matcher.results')}<ChevronRight className="w-4 h-4" />
         </button>
       </div>
     </div>
@@ -212,8 +204,8 @@ function CoffeeMatcher({ onComplete }: { onComplete: (prefs: any) => void }) {
 export function CatalogoPage() {
   const { data: apiLotes, loading } = useLotes();
   const { data: apiPrecio } = usePrecioActual();
+  const { t } = useLang();
 
-  // Fallback to mock if API returns nothing
   const allLotes = (apiLotes && apiLotes.length > 0) ? apiLotes : mockLotes;
   const precioIce = apiPrecio ? parseFloat(apiPrecio.precio_ice_usd) : mockPrecio.precio_ice;
 
@@ -262,13 +254,12 @@ export function CatalogoPage() {
     <div className="min-h-screen bg-void pt-20 pb-16">
       <div className="w-full px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
             <div>
-              <h1 className="font-display text-3xl text-text-warm mb-1">Catálogo B2B</h1>
+              <h1 className="font-display text-3xl text-text-warm mb-1">{t('cat.title')}</h1>
               <p className="text-sm text-text-sand">
-                {loading ? 'Cargando lotes...' : `${filteredLotes.length} lotes disponibles · Precios actualizados`}
+                {loading ? t('cat.loading') : `${filteredLotes.length} ${t('cat.available')}`}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -288,15 +279,14 @@ export function CatalogoPage() {
           <div className="flex flex-col sm:flex-row gap-3 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
-              <input type="text" placeholder="Buscar por nombre, variedad..."
-                value={search} onChange={(e) => setSearch(e.target.value)}
+              <input type="text" placeholder={t('cat.search')} value={search} onChange={(e) => setSearch(e.target.value)}
                 className="w-full bg-surface border border-gold-subtle rounded-lg pl-10 pr-4 py-2.5 text-sm text-text-warm placeholder:text-text-muted focus:border-volcanic-gold focus:outline-none transition-colors" />
             </div>
             <button onClick={() => setFiltersOpen(!filtersOpen)}
               className={`flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm transition-colors ${
                 filtersOpen ? 'border-volcanic-gold text-volcanic-gold' : 'border-gold-subtle text-text-sand hover:text-text-warm'
               }`}>
-              <SlidersHorizontal className="w-4 h-4" />Filtros
+              <SlidersHorizontal className="w-4 h-4" />{t('cat.filter')}
               {(filters.variedades.length + filters.procesos.length + filters.municipios.length > 0) && (
                 <span className="w-5 h-5 rounded-full bg-volcanic-gold text-void text-[10px] font-bold flex items-center justify-center">
                   {filters.variedades.length + filters.procesos.length + filters.municipios.length}
@@ -308,11 +298,10 @@ export function CatalogoPage() {
           {/* Filter Panel */}
           <AnimatePresence>
             {filtersOpen && (
-              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.3 }} className="overflow-hidden mb-6">
+              <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.3 }} className="overflow-hidden mb-6">
                 <div className="glass-panel rounded-xl p-5 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div>
-                    <p className="text-xs uppercase tracking-wider text-text-muted mb-3">Variedad</p>
+                    <p className="text-xs uppercase tracking-wider text-text-muted mb-3">{t('cat.variety')}</p>
                     <div className="flex flex-wrap gap-2">
                       {variedades.map((v: any) => (
                         <button key={v} onClick={() => toggleFilter('variedades', v)}
@@ -323,7 +312,7 @@ export function CatalogoPage() {
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-wider text-text-muted mb-3">Proceso</p>
+                    <p className="text-xs uppercase tracking-wider text-text-muted mb-3">{t('cat.process')}</p>
                     <div className="flex flex-wrap gap-2">
                       {procesos.map((p: any) => (
                         <button key={p} onClick={() => toggleFilter('procesos', p)}
@@ -334,7 +323,7 @@ export function CatalogoPage() {
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-wider text-text-muted mb-3">SCA Mínimo</p>
+                    <p className="text-xs uppercase tracking-wider text-text-muted mb-3">{t('cat.sca_min')}</p>
                     <input type="range" min={82} max={95} value={filters.scaMin}
                       onChange={(e) => setFilters({ ...filters, scaMin: Number(e.target.value) })}
                       className="w-full accent-volcanic-gold" />
@@ -343,7 +332,7 @@ export function CatalogoPage() {
                     </div>
                   </div>
                   <div>
-                    <p className="text-xs uppercase tracking-wider text-text-muted mb-3">Municipio</p>
+                    <p className="text-xs uppercase tracking-wider text-text-muted mb-3">{t('cat.municipio')}</p>
                     <div className="flex flex-wrap gap-2">
                       {municipios.map((m: any) => (
                         <button key={m} onClick={() => toggleFilter('municipios', m)}
@@ -380,10 +369,10 @@ export function CatalogoPage() {
           {!loading && filteredLotes.length === 0 && (
             <div className="text-center py-20">
               <Star className="w-12 h-12 text-text-muted mx-auto mb-4" />
-              <h3 className="font-display text-xl text-text-warm mb-2">No se encontraron lotes</h3>
-              <p className="text-sm text-text-sand mb-4">Ajusta tus filtros o búsqueda</p>
+              <h3 className="font-display text-xl text-text-warm mb-2">{t('cat.empty')}</h3>
+              <p className="text-sm text-text-sand mb-4">{t('cat.empty_sub')}</p>
               <button onClick={() => { setFilters({ variedades: [], procesos: [], scaMin: 82, precioMax: 100, municipios: [] }); setSearch(''); }}
-                className="text-volcanic-gold hover:underline text-sm">Limpiar filtros</button>
+                className="text-volcanic-gold hover:underline text-sm">{t('cat.clear')}</button>
             </div>
           )}
         </div>
