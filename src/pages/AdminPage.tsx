@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  LayoutDashboard, Package, Users, FileText,
+  LayoutDashboard, Package, Users,
   Check, X, ExternalLink, Loader2, RefreshCw,
   ChevronRight, DollarSign, AlertCircle,
   TrendingUp, Truck, Globe, Star, FlaskConical
@@ -45,10 +45,10 @@ export function AdminPage() {
   const { data: apiMuestras,    loading: mLoading,  refetch: refetchMuestras }    = useAdminMuestras();
   const { data: apiPrecio } = usePrecioActual();
 
-  const lotes      = apiLotes.length      > 0 ? apiLotes      : mockLotes;
-  const ofertas    = apiOfertas.length    > 0 ? apiOfertas    : mockOfertas;
+  const lotes       = apiLotes.length      > 0 ? apiLotes      : mockLotes;
+  const ofertas     = apiOfertas.length    > 0 ? apiOfertas    : mockOfertas;
   const compradores = apiCompradores;
-  const muestras   = apiMuestras;
+  const muestras    = apiMuestras;
 
   const precioIce = apiPrecio ? parseFloat(apiPrecio.precio_ice_usd) : 2.89;
   const trmCop    = apiPrecio ? parseFloat(apiPrecio.trm_cop)        : 4180;
@@ -124,11 +124,10 @@ export function AdminPage() {
         <main className="flex-1 overflow-y-auto p-6">
           <AnimatePresence mode="wait">
 
-            {/* ── DASHBOARD ── */}
+            {/* DASHBOARD */}
             {tab === 'dashboard' && (
               <motion.div key="dashboard" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <h1 className="font-display text-2xl text-text-warm mb-6">Dashboard</h1>
-
                 <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                   {[
                     { label: 'Lotes publicados',  value: stats.publicados,   icon: Package,      color: 'text-huila-green' },
@@ -147,7 +146,6 @@ export function AdminPage() {
                     </div>
                   ))}
                 </div>
-
                 <h2 className="font-display text-lg text-text-warm mb-4">Ofertas recientes</h2>
                 <div className="space-y-3">
                   {ofertas.slice(0, 5).map((o: any) => (
@@ -173,7 +171,7 @@ export function AdminPage() {
               </motion.div>
             )}
 
-            {/* ── LOTES ── */}
+            {/* LOTES */}
             {tab === 'lotes' && (
               <motion.div key="lotes" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <div className="flex items-center justify-between mb-6">
@@ -219,7 +217,7 @@ export function AdminPage() {
               </motion.div>
             )}
 
-            {/* ── OFERTAS ── */}
+            {/* OFERTAS */}
             {tab === 'ofertas' && (
               <motion.div key="ofertas" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <div className="flex items-center justify-between mb-4">
@@ -228,14 +226,13 @@ export function AdminPage() {
                     <RefreshCw className={`w-4 h-4 ${oLoading ? 'animate-spin' : ''}`} /> Actualizar
                   </button>
                 </div>
-                {/* KPIs oferta */}
                 {ofertaKpis && (
                   <div className="grid grid-cols-4 gap-3 mb-6">
                     {[
-                      { label: 'Total',     value: ofertaKpis.total,      color: 'text-text-sand' },
-                      { label: 'Pendientes',value: ofertaKpis.pendientes,  color: 'text-volcanic-gold' },
-                      { label: 'Aceptadas', value: ofertaKpis.aceptadas,   color: 'text-huila-green' },
-                      { label: 'Rechazadas',value: ofertaKpis.rechazadas,  color: 'text-warm-rust' },
+                      { label: 'Total',      value: ofertaKpis.total,      color: 'text-text-sand' },
+                      { label: 'Pendientes', value: ofertaKpis.pendientes,  color: 'text-volcanic-gold' },
+                      { label: 'Aceptadas',  value: ofertaKpis.aceptadas,   color: 'text-huila-green' },
+                      { label: 'Rechazadas', value: ofertaKpis.rechazadas,  color: 'text-warm-rust' },
                     ].map(k => (
                       <div key={k.label} className="bg-surface border border-gold-subtle rounded-xl p-4 text-center">
                         <p className={`font-mono-data text-2xl font-bold ${k.color}`}>{k.value}</p>
@@ -307,7 +304,7 @@ export function AdminPage() {
               </motion.div>
             )}
 
-            {/* ── COMPRADORES ── */}
+            {/* COMPRADORES */}
             {tab === 'compradores' && (
               <motion.div key="compradores" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <div className="flex items-center justify-between mb-6">
@@ -370,7 +367,7 @@ export function AdminPage() {
               </motion.div>
             )}
 
-            {/* ── MUESTRAS ── */}
+            {/* MUESTRAS */}
             {tab === 'muestras' && (
               <motion.div key="muestras" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <div className="flex items-center justify-between mb-6">
@@ -416,7 +413,6 @@ export function AdminPage() {
                             <p className="text-[10px] text-text-muted">{new Date(m.created_at).toLocaleDateString('es-CO')}</p>
                           </div>
                         </div>
-                        {/* Acciones de logística */}
                         {(m.estado === 'pendiente' || m.estado === 'preparando') && (
                           <div className="flex gap-2 mt-4 pt-4 border-t border-gold-subtle flex-wrap">
                             {m.estado === 'pendiente' && (
