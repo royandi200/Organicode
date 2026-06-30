@@ -109,15 +109,21 @@ async function resolveLoteId(lote_id, lote_slug) {
   return rows.length ? rows[0].id : null;
 }
 
+// FIX: se eliminó el subquery con LIMIT en JOIN que causaba error 500 en MySQL.
+// Ahora se hace en dos queries: primero el lote, luego el último precio histórico por separado.
 async function getLoteConPrecio(lote_id) {
-  const rows = await query(`
-    SELECT l.*, p.precio_ice_usd, p.precio_ice_kg, p.trm_cop,
-           p.diferencial_col, p.diferencial_hui, p.diferencial_trace
-    FROM lotes l
-    LEFT JOIN (SELECT * FROM precios_historico ORDER BY recorded_at DESC LIMIT 1) p ON 1=1
-    WHERE l.id = ?
-  `, [lote_id]);
-  return rows[0] || null;
+  const lotes = await query('SELECT * FROM lotes WHERE id = ? LIMIT 1', [lote_id]);
+  if (!lotes.length) return null;
+  const lote = lotes[0];
+  try {
+    const precios = await query(
+      'SELECT precio_ice_usd, precio_ice_kg, trm_cop, diferencial_col, diferencial_hui, diferencial_trace FROM precios_historico ORDER BY recorded_at DESC LIMIT 1'
+    );
+    if (precios.length) Object.assign(lote, precios[0]);
+  } catch (e) {
+    console.warn('[getLoteConPrecio] precios_historico no disponible:', e.message);
+  }
+  return lote;
 }
 
 function calcularPrecioLote(lote, precio) {
