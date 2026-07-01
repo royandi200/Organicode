@@ -33,14 +33,14 @@ function CatalogLoteCard({ lote, index }: { lote: any; index: number }) {
       transition={{ delay: index * 0.05, duration: 0.3 }}
       className={`group bg-surface border border-gold-subtle rounded-xl overflow-hidden hover:border-volcanic-gold/40 hover:-translate-y-1 hover:shadow-gold transition-all duration-300 ${lote.estado === 'vendido' ? 'opacity-40' : ''}`}
     >
-      <div className="aspect-[4/3] overflow-hidden relative">
+      <Link to={`/lote/${lote.slug}`} className="block aspect-[4/3] overflow-hidden relative">
         <img src={lote.foto_url || '/images/farm-aerial.jpg'} alt={lote.nombre}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
         <div className="absolute top-3 left-3 flex gap-2">
           <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${scaColor} border-current`}>{scaScore} SCA</span>
           <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-md border ${estado.color}`}>{estado.label}</span>
         </div>
-      </div>
+      </Link>
       <div className="p-5">
         <h3 className="font-display text-lg text-text-warm group-hover:text-volcanic-gold transition-colors mb-1">
           <Link to={`/lote/${lote.slug}`}>{lote.nombre}</Link>
@@ -51,15 +51,18 @@ function CatalogLoteCard({ lote, index }: { lote: any; index: number }) {
             <span key={n} className="px-2 py-0.5 bg-volcanic-gold/5 border border-volcanic-gold/20 rounded-full text-[10px] text-volcanic-gold">{n.trim()}</span>
           ))}
         </div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between mb-3">
           <div>
             <span className="font-mono-data text-xl font-bold text-volcanic-gold">${precio.toFixed(2)}</span>
             <span className="text-xs text-text-sand">/kg</span>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => openSampleModal(lote)} className="px-3 py-1.5 text-xs text-text-sand border border-gold-subtle rounded-lg hover:border-volcanic-gold transition-colors">{t('lote.sample')}</button>
-            <button onClick={() => openOfferModal(lote)} className="px-3 py-1.5 text-xs bg-volcanic-gold text-void rounded-lg hover:bg-volcanic-gold/90 transition-colors">{t('lote.offer')}</button>
-          </div>
+          <Link to={`/lote/${lote.slug}`} className="text-xs font-medium text-volcanic-gold hover:underline flex items-center gap-1">
+            {t('lote.view_detail')} <ChevronRight className="w-3 h-3" />
+          </Link>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => openSampleModal(lote)} className="px-3 py-1.5 text-xs text-text-sand border border-gold-subtle rounded-lg hover:border-volcanic-gold transition-colors">{t('lote.sample')}</button>
+          <button onClick={() => openOfferModal(lote)} className="px-3 py-1.5 text-xs bg-volcanic-gold text-void rounded-lg hover:bg-volcanic-gold/90 transition-colors">{t('lote.offer')}</button>
         </div>
       </div>
     </motion.div>
