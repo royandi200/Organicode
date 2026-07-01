@@ -2,7 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "crons": [
-    { "path": "/api/cron/precio-bolsa", "schedule": "0 13 * * *" }
+    { "path": "/api/cron/precio-bolsa", "schedule": "*/15 * * * *" }
   ],
   "rewrites": [
     { "source": "/api/lotes/:slug", "destination": "/api/lotes/[slug]" },
