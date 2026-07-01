@@ -11,6 +11,7 @@ import { useLote, usePrecioActual } from '@/hooks/useApi';
 import { getLoteBySlug, calcularDesglosePrecio, precioActual as mockPrecio, incotermRates } from '@/data/mock';
 import { useAppStore } from '@/store';
 import { FlavorWheel } from '@/components/FlavorWheel';
+import { jsPDF } from 'jspdf';
 
 export function LotePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -125,6 +126,119 @@ export function LotePage() {
   const precioFinal = desglose.totalEXW + getIncotermExtra();
   const TrendIcon = precio.trend === 'up' ? TrendingUp : TrendingDown;
   const activeNotes = (lote.notas_sensoriales || '').split(',').map((n: string) => n.trim());
+
+  const descargarCotizacionPDF = () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+    const gold: [number, number, number] = [201, 168, 76]; // volcanic-gold
+    const dark: [number, number, number] = [17, 17, 15];
+    let y = 20;
+
+    // Encabezado
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(...dark);
+    doc.text('ORGANICODE', 20, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(120, 120, 120);
+    doc.text('Cotización de lote — café de especialidad, Huila, Colombia', 20, y + 6);
+    doc.setDrawColor(...gold);
+    doc.setLineWidth(0.6);
+    doc.line(20, y + 10, 190, y + 10);
+    y += 20;
+
+    // Datos del lote
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.setTextColor(...dark);
+    doc.text(lote.nombre || 'Lote sin nombre', 20, y);
+    y += 7;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(60, 60, 60);
+    const datos = [
+      ['Variedad', lote.variedad || '—'],
+      ['Proceso', lote.proceso || '—'],
+      ['Puntaje SCA', lote.sca_score ? `${lote.sca_score} pts` : '—'],
+      ['Caficultor', lote.caficultor?.nombre || '—'],
+      ['Finca', lote.caficultor?.finca ? `${lote.caficultor.finca}, ${lote.caficultor.municipio || ''}` : '—'],
+      ['Código de autenticidad', lote.hash_registro ? lote.hash_registro.slice(0, 16) + '…' : 'No publicado'],
+    ];
+    datos.forEach(([label, value]) => {
+      doc.setFont('helvetica', 'bold');
+      doc.text(`${label}:`, 20, y);
+      doc.setFont('helvetica', 'normal');
+      doc.text(String(value), 65, y);
+      y += 6;
+    });
+    y += 6;
+
+    // Desglose de precio
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...dark);
+    doc.text('Desglose de precio (USD/kg)', 20, y);
+    y += 8;
+
+    const filas: [string, number][] = [
+      ['Precio Bolsa NY ICE', desglose.base],
+      ['Diferencial Colombia', desglose.diferencialColombia],
+      ['Diferencial Huila', desglose.diferencialHuila],
+      ['Prima Trazabilidad', desglose.primaTrazabilidad],
+      [`Prima SCA (${lote.sca_score} pts)`, desglose.primaSCA],
+    ];
+    doc.setFontSize(10);
+    filas.forEach(([label, value]) => {
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(60, 60, 60);
+      doc.text(label, 20, y);
+      doc.text(`$ ${value.toFixed(2)}`, 170, y, { align: 'right' });
+      y += 6;
+    });
+
+    doc.setDrawColor(220, 220, 220);
+    doc.line(20, y, 190, y);
+    y += 7;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(11);
+    doc.setTextColor(...dark);
+    doc.text('PRECIO BASE EXW', 20, y);
+    doc.setTextColor(...gold);
+    doc.text(`$ ${desglose.totalEXW.toFixed(2)} USD/kg`, 170, y, { align: 'right' });
+    y += 9;
+
+    if (incoterm !== 'EXW') {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      doc.setTextColor(60, 60, 60);
+      const extraLabel = incoterm === 'FOB' ? 'Flete a puerto (FOB)' : `Flete + seguro a ${cifCountry} (CIF)`;
+      doc.text(extraLabel, 20, y);
+      doc.text(`+ $ ${getIncotermExtra().toFixed(2)}`, 170, y, { align: 'right' });
+      y += 8;
+      doc.setDrawColor(...gold);
+      doc.line(20, y, 190, y);
+      y += 7;
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...dark);
+      doc.text(`PRECIO FINAL ${incoterm}`, 20, y);
+      doc.setTextColor(...gold);
+      doc.text(`$ ${precioFinal.toFixed(2)} USD/kg`, 170, y, { align: 'right' });
+      y += 10;
+    }
+
+    // Pie de página
+    doc.setDrawColor(230, 230, 230);
+    doc.line(20, 275, 190, 275);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(140, 140, 140);
+    doc.text(`Generado el ${new Date().toLocaleDateString('es-CO', { day: 'numeric', month: 'long', year: 'numeric' })} — Organicode`, 20, 280);
+    doc.text('Precio de referencia sujeto a variación diaria de la Bolsa ICE. No constituye una oferta en firme.', 20, 284);
+
+    doc.save(`Cotizacion-${lote.slug || lote.id}.pdf`);
+  };
+
 
   const valoresMap: Record<string, { icon: typeof Leaf; label: string }> = {
     organico: { icon: Leaf, label: 'Cultivo orgánico' },
@@ -414,7 +528,7 @@ export function LotePage() {
             </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 mt-6">
-            <button onClick={() => window.print()}
+            <button onClick={descargarCotizacionPDF}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-white border border-gold-subtle rounded-xl text-sm font-medium text-text-ink hover:border-volcanic-gold transition-colors">
               <FileText className="w-4 h-4" />Descargar Cotización PDF
             </button>
