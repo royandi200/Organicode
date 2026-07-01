@@ -190,7 +190,7 @@ export function OfferModal() {
     formData.pais || '?',
     formData.empresa || '?'
   );
-  const waLink = `https://wa.me/573001234567?text=${encodeURIComponent(waText)}`;
+  const waLink = `https://wa.me/573232421944?text=${encodeURIComponent(waText)}`;
 
   const LANG_FLAGS: Record<Lang, string> = { es: '🇨🇴 ES', en: '🇺🇸 EN', de: '🇩🇪 DE', ko: '🇰🇷 KO' };
 

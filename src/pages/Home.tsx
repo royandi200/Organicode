@@ -169,7 +169,7 @@ export default function Home() {
               <Link to="/catalogo" className="px-8 py-4 bg-volcanic-gold text-void font-medium rounded-xl hover:bg-volcanic-gold/90 hover:shadow-gold transition-all flex items-center justify-center gap-2">
                 {t('home.cta')}<ArrowRight className="w-4 h-4" />
               </Link>
-              <a href="https://wa.me/573001234567" target="_blank" rel="noopener noreferrer"
+              <a href="https://wa.me/573232421944" target="_blank" rel="noopener noreferrer"
                 className="px-8 py-4 border border-gold-medium text-volcanic-gold font-medium rounded-xl hover:bg-volcanic-gold/10 transition-all flex items-center justify-center gap-2">
                 {t('home.cta2')}
               </a>
